@@ -1,0 +1,5 @@
+package platform
+
+startup :: proc() {
+
+}
