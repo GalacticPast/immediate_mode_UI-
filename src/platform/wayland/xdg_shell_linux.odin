@@ -9,28 +9,28 @@ package wayland
 // create positioners or popups.
 
 @(private = "file")
-get_xdg_surface_types := [2]^wl_interface{&xdg_surface_interface, nil} // [1] = &wl_surface_interface, set in init below
+get_xdg_surface_types := [2]^interface{&xdg_surface_interface, nil} // [1] = &surface_interface, set in init below
 @(private = "file")
-get_toplevel_types := [1]^wl_interface{&xdg_toplevel_interface}
+get_toplevel_types := [1]^interface{&xdg_toplevel_interface}
 
-// wl_surface_interface is a variable inside libwayland, so its address is only known once the program
+// surface_interface is a variable inside libwayland, so its address is only known once the program
 // is loaded.
 @(init, private = "file")
 init_xdg_shell_types :: proc "contextless" () {
-    get_xdg_surface_types[1] = &wl_surface_interface
+    get_xdg_surface_types[1] = &surface_interface
 }
 
 @(private = "file")
-xdg_wm_base_requests := [?]wl_message {
+xdg_wm_base_requests := [?]message {
     {"destroy", "", nil},
     {"create_positioner", "n", nil},
     {"get_xdg_surface", "no", raw_data(get_xdg_surface_types[:])},
     {"pong", "u", nil},
 }
 @(private = "file")
-xdg_wm_base_events := [?]wl_message{{"ping", "u", nil}}
+xdg_wm_base_events := [?]message{{"ping", "u", nil}}
 
-xdg_wm_base_interface := wl_interface {
+xdg_wm_base_interface := interface {
     name         = "xdg_wm_base",
     version      = 7,
     method_count = len(xdg_wm_base_requests),
@@ -40,7 +40,7 @@ xdg_wm_base_interface := wl_interface {
 }
 
 @(private = "file")
-xdg_surface_requests := [?]wl_message {
+xdg_surface_requests := [?]message {
     {"destroy", "", nil},
     {"get_toplevel", "n", raw_data(get_toplevel_types[:])},
     {"get_popup", "n?oo", nil},
@@ -48,9 +48,9 @@ xdg_surface_requests := [?]wl_message {
     {"ack_configure", "u", nil},
 }
 @(private = "file")
-xdg_surface_events := [?]wl_message{{"configure", "u", nil}}
+xdg_surface_events := [?]message{{"configure", "u", nil}}
 
-xdg_surface_interface := wl_interface {
+xdg_surface_interface := interface {
     name         = "xdg_surface",
     version      = 7,
     method_count = len(xdg_surface_requests),
@@ -60,7 +60,7 @@ xdg_surface_interface := wl_interface {
 }
 
 @(private = "file")
-xdg_toplevel_requests := [?]wl_message {
+xdg_toplevel_requests := [?]message {
     {"destroy", "", nil},
     {"set_parent", "?o", nil},
     {"set_title", "s", nil},
@@ -77,14 +77,14 @@ xdg_toplevel_requests := [?]wl_message {
     {"set_minimized", "", nil},
 }
 @(private = "file")
-xdg_toplevel_events := [?]wl_message {
+xdg_toplevel_events := [?]message {
     {"configure", "iia", nil},
     {"close", "", nil},
     {"configure_bounds", "4ii", nil},
     {"wm_capabilities", "5a", nil},
 }
 
-xdg_toplevel_interface := wl_interface {
+xdg_toplevel_interface := interface {
     name         = "xdg_toplevel",
     version      = 7,
     method_count = len(xdg_toplevel_requests),
