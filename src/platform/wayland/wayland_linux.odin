@@ -100,10 +100,10 @@ foreign wayland_client {
     display_read_events :: proc(display: ^display) -> c.int ---
     display_cancel_read :: proc(display: ^display) ---
 
-    proxy_marshal_flags :: proc(proxy: ^proxy, opcode: u32, interface: ^interface, version: u32, flags: u32, #c_vararg args: ..any) -> ^proxy ---
-    proxy_add_listener :: proc(proxy: ^proxy, implementation: rawptr, data: rawptr) -> c.int ---
-    proxy_get_version :: proc(proxy: ^proxy) -> u32 ---
-    proxy_destroy :: proc(proxy: ^proxy) ---
+    proxy_marshal_flags :: proc(p: ^proxy, opcode: u32, interface: ^interface, version: u32, flags: u32, #c_vararg args: ..any) -> ^proxy ---
+    proxy_add_listener :: proc(p: ^proxy, implementation: rawptr, data: rawptr) -> c.int ---
+    proxy_get_version :: proc(p: ^proxy) -> u32 ---
+    proxy_destroy :: proc(p: ^proxy) ---
 }
 
 @(default_calling_convention = "c", link_prefix = "wl_")
