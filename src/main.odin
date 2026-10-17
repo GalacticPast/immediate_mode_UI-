@@ -1,6 +1,4 @@
 package main
-
-import "base:runtime"
 import pl "platform"
 import gl "vendor:OpenGL"
 // this feels so weird

@@ -2,6 +2,7 @@ package platform
 
 import "core:fmt"
 import "core:sys/linux"
+import "core:time"
 import gl "vendor:OpenGL"
 import egl "vendor:egl"
 import wl "wayland"
@@ -38,6 +39,10 @@ platform_linux_state :: struct {
     // surface
     width:        i32,
     height:       i32,
+
+
+    // idk if this should be here at all
+    deadline:     time.Tick,
 }
 @(private = "file")
 p_l_state: platform_linux_state
@@ -179,6 +184,9 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
     },
     close = proc "c" (data: rawptr, toplevel: ^wl.xdg_toplevel) {
         // closing the window
+        if p_state.t_context == nil {
+            return
+        }
         context = p_state.t_context^
         e: ^event = new(event)
         e.type = .WINDOW_CLOSE
@@ -380,11 +388,57 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 }
 
 dispatch :: proc() -> bool {
+    defer { p_l_state.deadline = {} }
+    result: i32 = wl.display_prepare_read(p_l_state.display)
+    if result == -1 {
+        result = wl.display_dispatch_pending(p_l_state.display)
+        return result == -1 ? false : true
+    }
     wl.display_flush(p_l_state.display)
 
-    result: i32 = wl.display_dispatch_pending(p_l_state.display)
+    raw_fd: linux.Fd = cast(linux.Fd)wl.display_get_fd(p_l_state.display)
+    fds := []linux.Poll_Fd{{fd = raw_fd, events = {.IN}}}
 
+    ready, err := linux.poll(fds, poll_timeout_ms(p_l_state.deadline))
+    if err != .NONE && err != .EINTR {
+        fmt.eprintln("Linux poll failed ", err)
+        wl.display_cancel_read(p_l_state.display)
+        return false
+    }
+
+    if ready > 0 {
+        // also fails here if the compositor hung up (ERR / HUP)
+        if wl.display_read_events(p_l_state.display) == -1 {
+            return false
+        }
+    } else {
+        // timed out or interrupted by a signal, nothing to read
+        wl.display_cancel_read(p_l_state.display)
+    }
+
+    result = wl.display_dispatch_pending(p_l_state.display)
     return result == -1 ? false : true
+}
+
+// -1 = no deadline, sleep until an event. 0 = deadline already passed, don't sleep.
+poll_timeout_ms :: proc(deadline: time.Tick) -> i32 {
+    if deadline == {} {
+        return -1
+    }
+
+    remaining: time.Duration = time.tick_diff(time.tick_now(), deadline)
+    if remaining <= 0 {
+        return 0
+    }
+
+    // round up, otherwise a deadline 0.4 ms away becomes poll(0) and the loop spins
+    ms: i64 = cast(i64)((remaining + time.Millisecond - 1) / time.Millisecond)
+    // cap it so the cast can't overflow, we recompute every wake anyway
+    return cast(i32)min(ms, 60_000)
+}
+
+request_deadline :: proc(deadline: time.Tick) {
+    p_l_state.deadline = deadline
 }
 
 swap_buffers :: proc() {
