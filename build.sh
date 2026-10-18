@@ -1,2 +1,3 @@
 #!/bin/sh
-odin build src -out:app -debug -vet
+mkdir -p bin
+odin build src -out:bin/app -debug -vet

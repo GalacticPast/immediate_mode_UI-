@@ -9,40 +9,46 @@ import wl "wayland"
 
 platform_linux_state :: struct {
     /* Globals */
-    display:      ^wl.display,
-    registry:     ^wl.registry,
-    proxy:        ^wl.proxy,
-    compositor:   ^wl.compositor,
-    surface:      ^wl.surface,
-    seat:         ^wl.seat,
-    xdg_wm_base:  ^wl.xdg_wm_base,
-    xkb_context:  ^wl.xkb_context,
-    xkb_state:    ^wl.xkb_state,
-    xkb_keymap:   ^wl.xkb_keymap,
-    //objects
-    xdg_surface:  ^wl.xdg_surface,
-    xdg_toplevel: ^wl.xdg_toplevel,
-    keyboard:     ^wl.keyboard,
-    pointer:      ^wl.pointer,
+    display:                     ^wl.display,
+    registry:                    ^wl.registry,
+    proxy:                       ^wl.proxy,
+    compositor:                  ^wl.compositor,
+    surface:                     ^wl.surface,
+    seat:                        ^wl.seat,
+
+
+    // objects
+    xdg_wm_base:                 ^wl.xdg_wm_base,
+    xdg_surface:                 ^wl.xdg_surface,
+    xdg_toplevel:                ^wl.xdg_toplevel,
+    xkb_context:                 ^wl.xkb_context,
+    xkb_state:                   ^wl.xkb_state,
+    xkb_keymap:                  ^wl.xkb_keymap,
+    keyboard:                    ^wl.keyboard,
+    pointer:                     ^wl.pointer,
+    wp_viewporter:               ^wl.wp_viewporter,
+    wp_fractional_scale_manager: ^wl.wp_fractional_scale_manager_v1,
+    wp_fractional_scale:         ^wl.wp_fractional_scale_v1,
+    wp_viewport:                 ^wl.wp_viewport,
 
     // window specific
-    egl_context:  egl.Context,
-    egl_display:  egl.Display,
-    egl_window:   ^wl.egl_window,
-    egl_surface:  egl.Surface,
-    egl_config:   egl.Config,
+    egl_context:                 egl.Context,
+    egl_display:                 egl.Display,
+    egl_window:                  ^wl.egl_window,
+    egl_surface:                 egl.Surface,
+    egl_config:                  egl.Config,
 
     // idk what this is for now
-    callback:     ^wl.callback,
-    output:       ^wl.output,
+    callback:                    ^wl.callback,
+    output:                      ^wl.output,
 
     // surface
-    width:        i32,
-    height:       i32,
-
+    width:                       i32,
+    height:                      i32,
+    display_scale:               f32,
 
     // idk if this should be here at all
-    deadline:     time.Tick,
+    deadline:                    time.Tick,
 }
 @(private = "file")
 p_l_state: platform_linux_state
@@ -159,7 +165,21 @@ r_listener: wl.registry_listener = {
             case wl.seat_interface.name:
                 p_l_state.seat = cast(^wl.seat)wl.registry_bind(registry, name, &wl.seat_interface, version)
                 wl.add_listener(p_l_state.seat, &w_seat_listener, &p_l_state)
-            case:
+            case wl.wp_viewporter_interface.name:
+                p_l_state.wp_viewporter = cast(^wl.wp_viewporter)wl.registry_bind(
+                    registry,
+                    name,
+                    &wl.wp_viewporter_interface,
+                    version,
+                )
+            case wl.wp_fractional_scale_manager_v1_interface.name:
+                p_l_state.wp_fractional_scale_manager = cast(^wl.wp_fractional_scale_manager_v1)wl.registry_bind(
+                    registry,
+                    name,
+                    &wl.wp_fractional_scale_manager_v1_interface,
+                    version,
+                )
+
         }
     },
     global_remove = proc "c" (data: rawptr, registry: ^wl.registry, name: u32) {
@@ -194,6 +214,13 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
     },
     configure_bounds = proc "c" (data: rawptr, toplevel: ^wl.xdg_toplevel, width, height: i32) {  },
     wm_capabilities = proc "c" (data: rawptr, toplevel: ^wl.xdg_toplevel, capabilities: ^wl.array) {  },
+}
+
+wp_fractional_scale_listener: wl.wp_fractional_scale_v1_listener = {
+    // The scale numerator over a denominator of 120, so 1.5 arrives as 180.
+    preferred_scale = proc "c" (data: rawptr, fractional_scale: ^wl.wp_fractional_scale_v1, scale: u32) {
+        p_l_state.display_scale = (f32)(scale) / 120.0
+    },
 }
 
 startup :: proc(width, height: i32) -> (ok: bool) {
@@ -247,6 +274,22 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 
     wl.xdg_toplevel_set_title(p_l_state.xdg_toplevel, "odin odin odin")
     wl.xdg_toplevel_set_app_id(p_l_state.xdg_toplevel, "odin odin odin")
+
+    wl.xdg_toplevel_set_min_size(p_l_state.xdg_toplevel, width, height)
+    wl.xdg_toplevel_set_max_size(p_l_state.xdg_toplevel, width, height)
+
+    if p_l_state.wp_viewporter != nil {
+        p_l_state.wp_viewport = wl.wp_viewporter_get_viewport(p_l_state.wp_viewporter, p_l_state.surface)
+        wl.wp_viewport_set_destination(p_l_state.wp_viewport, width, height)
+    }
+
+    if p_l_state.wp_fractional_scale_manager != nil {
+        p_l_state.wp_fractional_scale = wl.wp_fractional_scale_manager_v1_get_fractional_scale(
+            p_l_state.wp_fractional_scale_manager,
+            p_l_state.surface,
+        )
+        wl.add_listener(p_l_state.wp_fractional_scale, &wp_fractional_scale_listener, &p_l_state)
+    }
 
     wl.surface_commit(p_l_state.surface)
 
@@ -372,11 +415,15 @@ startup :: proc(width, height: i32) -> (ok: bool) {
     egl.SwapBuffers(p_l_state.egl_display, p_l_state.egl_surface)
     wl.display_roundtrip(p_l_state.display)
 
-    // if (state->display_scale != 1.0f)
-    // {
-    //     wl_egl_window_resize(state->egl_window, (s32)(state->width * state->display_scale),
-    //                          (s32)(state->height * state->display_scale), 0, 0);
-    // }
+    if p_l_state.display_scale != 1.0 {
+        wl.egl_window_resize(
+            p_l_state.egl_window,
+            i32(f32(width) * p_l_state.display_scale),
+            i32(f32(height) * p_l_state.display_scale),
+            0,
+            0,
+        )
+    }
 
     gl.load_up_to(4, 5, egl.gl_set_proc_address)
 
@@ -445,106 +492,110 @@ swap_buffers :: proc() {
     egl.SwapBuffers(p_l_state.egl_display, p_l_state.egl_surface)
 }
 
+get_display_scale :: proc() -> f32 {
+    return p_l_state.display_scale
+}
+
 translate_key_code :: proc "contextless" (xkb_key: u32) -> key_type {
     switch (xkb_key) {
         case wl.XKB_KEY_Escape:
-            return .KEY_ESCAPE
+            return .ESCAPE
         case wl.XKB_KEY_a:
-            return .KEY_A
+            return .A
         case wl.XKB_KEY_b:
-            return .KEY_B
+            return .B
         case wl.XKB_KEY_c:
-            return .KEY_C
+            return .C
         case wl.XKB_KEY_d:
-            return .KEY_D
+            return .D
         case wl.XKB_KEY_e:
-            return .KEY_E
+            return .E
         case wl.XKB_KEY_f:
-            return .KEY_F
+            return .F
         case wl.XKB_KEY_g:
-            return .KEY_G
+            return .G
         case wl.XKB_KEY_h:
-            return .KEY_H
+            return .H
         case wl.XKB_KEY_i:
-            return .KEY_I
+            return .I
         case wl.XKB_KEY_j:
-            return .KEY_J
+            return .J
         case wl.XKB_KEY_k:
-            return .KEY_K
+            return .K
         case wl.XKB_KEY_l:
-            return .KEY_L
+            return .L
         case wl.XKB_KEY_m:
-            return .KEY_M
+            return .M
         case wl.XKB_KEY_n:
-            return .KEY_N
+            return .N
         case wl.XKB_KEY_o:
-            return .KEY_O
+            return .O
         case wl.XKB_KEY_p:
-            return .KEY_P
+            return .P
         case wl.XKB_KEY_q:
-            return .KEY_Q
+            return .Q
         case wl.XKB_KEY_r:
-            return .KEY_R
+            return .R
         case wl.XKB_KEY_s:
-            return .KEY_S
+            return .S
         case wl.XKB_KEY_t:
-            return .KEY_T
+            return .T
         case wl.XKB_KEY_u:
-            return .KEY_U
+            return .U
         case wl.XKB_KEY_v:
-            return .KEY_V
+            return .V
         case wl.XKB_KEY_w:
-            return .KEY_W
+            return .W
         case wl.XKB_KEY_x:
-            return .KEY_X
+            return .X
         case wl.XKB_KEY_y:
-            return .KEY_Y
+            return .Y
         case wl.XKB_KEY_z:
-            return .KEY_Z
+            return .Z
         case wl.XKB_KEY_Left:
-            return .KEY_LEFT
+            return .LEFT
         case wl.XKB_KEY_Up:
-            return .KEY_UP
+            return .UP
         case wl.XKB_KEY_Right:
-            return .KEY_RIGHT
+            return .RIGHT
         case wl.XKB_KEY_Down:
-            return .KEY_DOWN
+            return .DOWN
         case wl.XKB_KEY_space:
-            return .KEY_SPACE
+            return .SPACE
         case wl.XKB_KEY_KP_0:
-            return .KEY_NUMPAD0
+            return .NUMPAD0
         case wl.XKB_KEY_KP_1:
-            return .KEY_NUMPAD1
+            return .NUMPAD1
         case wl.XKB_KEY_KP_2:
-            return .KEY_NUMPAD2
+            return .NUMPAD2
         case wl.XKB_KEY_KP_3:
-            return .KEY_NUMPAD3
+            return .NUMPAD3
         case wl.XKB_KEY_KP_4:
-            return .KEY_NUMPAD4
+            return .NUMPAD4
         case wl.XKB_KEY_KP_5:
-            return .KEY_NUMPAD5
+            return .NUMPAD5
         case wl.XKB_KEY_KP_6:
-            return .KEY_NUMPAD6
+            return .NUMPAD6
         case wl.XKB_KEY_KP_7:
-            return .KEY_NUMPAD7
+            return .NUMPAD7
         case wl.XKB_KEY_KP_8:
-            return .KEY_NUMPAD8
+            return .NUMPAD8
         case wl.XKB_KEY_KP_9:
-            return .KEY_NUMPAD9
+            return .NUMPAD9
         case wl.XKB_KEY_Shift_L:
-            return .KEY_LSHIFT
+            return .LSHIFT
         case wl.XKB_KEY_Shift_R:
-            return .KEY_RSHIFT
+            return .RSHIFT
         case wl.XKB_KEY_Control_L:
-            return .KEY_LCONTROL
+            return .LCONTROL
         case wl.XKB_KEY_Control_R:
-            return .KEY_RCONTROL
+            return .RCONTROL
         case wl.XKB_KEY_Caps_Lock:
-            return .KEY_CAPITAL
+            return .CAPITAL
         case wl.XKB_KEY_Alt_L:
-            return .KEY_LALT
+            return .LALT
         case wl.XKB_KEY_Alt_R:
-            return .KEY_RALT
+            return .RALT
     }
-    return .KEY_MAX_KEYS
+    return .MAX_KEYS
 }

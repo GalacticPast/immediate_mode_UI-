@@ -381,3 +381,12 @@ xdg_toplevel_set_app_id :: proc "contextless" (toplevel: ^xdg_toplevel, app_id: 
     XDG_TOPLEVEL_SET_APP_ID :: 3
     proxy_marshal_flags((^proxy)(toplevel), XDG_TOPLEVEL_SET_APP_ID, nil, version_of(toplevel), 0, app_id)
 }
+
+xdg_toplevel_set_min_size :: proc "contextless" (toplevel: ^xdg_toplevel, width, height: i32) {
+    XDG_TOPLEVEL_SET_MIN_SIZE :: 8
+    proxy_marshal_flags((^proxy)(toplevel), XDG_TOPLEVEL_SET_MIN_SIZE, nil, version_of(toplevel), 0, width, height)
+}
+xdg_toplevel_set_max_size :: proc "contextless" (toplevel: ^xdg_toplevel, width, height: i32) {
+    XDG_TOPLEVEL_SET_MAX_SIZE :: 7
+    proxy_marshal_flags((^proxy)(toplevel), XDG_TOPLEVEL_SET_MAX_SIZE, nil, version_of(toplevel), 0, width, height)
+}
