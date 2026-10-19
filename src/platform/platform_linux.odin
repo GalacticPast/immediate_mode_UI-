@@ -467,23 +467,6 @@ dispatch :: proc() -> bool {
     return result == -1 ? false : true
 }
 
-// -1 = no deadline, sleep until an event. 0 = deadline already passed, don't sleep.
-poll_timeout_ms :: proc(deadline: time.Tick) -> i32 {
-    if deadline == {} {
-        return -1
-    }
-
-    remaining: time.Duration = time.tick_diff(time.tick_now(), deadline)
-    if remaining <= 0 {
-        return 0
-    }
-
-    // round up, otherwise a deadline 0.4 ms away becomes poll(0) and the loop spins
-    ms: i64 = cast(i64)((remaining + time.Millisecond - 1) / time.Millisecond)
-    // cap it so the cast can't overflow, we recompute every wake anyway
-    return cast(i32)min(ms, 60_000)
-}
-
 request_deadline :: proc(deadline: time.Tick) {
     p_l_state.deadline = deadline
 }

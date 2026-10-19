@@ -2,6 +2,7 @@ package platform
 
 import "base:runtime"
 import "core:fmt"
+import "core:time"
 
 event_types :: enum {
     NONE = 0,
@@ -216,4 +217,21 @@ eat_event :: proc(list: ^event_list, node: ^event) {
 
 push_event :: proc(e: ^event) {
     insert_ll(&p_state.list, e)
+}
+
+// -1 = no deadline, sleep until an event. 0 = deadline already passed, don't sleep.
+poll_timeout_ms :: proc(deadline: time.Tick) -> i32 {
+    if deadline == {} {
+        return -1
+    }
+
+    remaining: time.Duration = time.tick_diff(time.tick_now(), deadline)
+    if remaining <= 0 {
+        return 0
+    }
+
+    // round up, otherwise a deadline 0.4 ms away becomes poll(0) and the loop spins
+    ms: i64 = cast(i64)((remaining + time.Millisecond - 1) / time.Millisecond)
+    // cap it so the cast can't overflow, we recompute every wake anyway
+    return cast(i32)min(ms, 60_000)
 }
