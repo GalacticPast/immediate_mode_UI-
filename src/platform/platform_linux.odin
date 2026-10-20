@@ -430,6 +430,9 @@ startup :: proc(width, height: i32) -> (ok: bool) {
     fmt.println("Opengl initialization sucessful.")
 
     wl.surface_commit(p_l_state.surface)
+
+    // request the first frame deadline right here so that we dont sleep on it
+    request_deadline(time.tick_now())
     return true
 
 }
