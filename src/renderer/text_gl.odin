@@ -1,10 +1,19 @@
-package text
+package renderer
 
 import "core:math/linalg"
 import "core:mem"
 import gl "vendor:OpenGL"
 
-@(private)
+// uploaded as-is to the instanced vbo, the layout has to match the vertex shader
+glyph_instance :: struct {
+    pen_offset:                [2]f32,
+    curve_indices:             [2]f32,
+    color_and_font_px:         [4]f32, // the last value of color is the font size
+    translation_matrix:        matrix[4, 4]f32,
+    horizontal_band_locations: [4][4]f32,
+    vertical_band_locations:   [4][4]f32,
+}
+
 text_gl_state :: struct {
     curves_ssbo:           u32,
     horizontal_bands_ssbo: u32,
@@ -19,6 +28,7 @@ text_gl_state :: struct {
     view_loc:              i32,
     // frame specific
     frame_instance_count:  i32,
+    instances:             [dynamic]glyph_instance,
 }
 
 @(private)
@@ -41,6 +51,8 @@ indices := [?]u32 {
 }
 // odinfmt: enable
 
+MAX_GLYPHS :: 4096
+
 // SSBO bindings, must match the layout(binding = N) in the fragment shader
 @(private)
 CURVES_BINDING :: 1
@@ -49,8 +61,9 @@ HORIZONTAL_BANDS_BINDING :: 2
 @(private)
 VERTICAL_BANDS_BINDING :: 3
 
+
 @(private)
-gl_init :: proc(allocator: mem.Allocator) {
+text_init :: proc(allocator: mem.Allocator) {
     t_gl_state = new(text_gl_state, allocator)
     assert(t_gl_state != nil)
 
@@ -112,7 +125,7 @@ link_attrib :: proc(index: u32, components: i32, stride: i32, offset: uintptr) {
 
 // needs the GL context, so it runs before the context is destroyed
 @(private)
-gl_deinit :: proc() {
+text_deinit :: proc() {
     gl.DeleteBuffers(1, &t_gl_state.curves_ssbo)
     gl.DeleteBuffers(1, &t_gl_state.horizontal_bands_ssbo)
     gl.DeleteBuffers(1, &t_gl_state.vertical_bands_ssbo)
@@ -123,8 +136,8 @@ gl_deinit :: proc() {
     gl.DeleteVertexArrays(1, &t_gl_state.b_vao)
 
     gl.DeleteProgram(t_gl_state.shader)
-
-    free(t_gl_state, t_state.allocator)
+    // @info: incomplete
+    //free(t_gl_state, r_state.allocator)
     t_gl_state = nil
 }
 
@@ -170,7 +183,7 @@ set_shader_uniforms :: proc(physical_width, physical_height: i32) {
 }
 
 @(private)
-render :: proc(physical_width, physical_height: i32) {
+text_render :: proc(physical_width, physical_height: i32) {
     gl.UseProgram(t_gl_state.shader)
 
     set_shader_uniforms(physical_width, physical_height)
@@ -178,4 +191,57 @@ render :: proc(physical_width, physical_height: i32) {
     gl.BindVertexArray(t_gl_state.b_vao)
 
     gl.DrawElementsInstanced(gl.TRIANGLES, len(indices), gl.UNSIGNED_INT, nil, t_gl_state.frame_instance_count)
+}
+// wrap_width is measured from position.x; 0 disables wrapping
+// missing support for multiple font_sizes in the text itself.
+push_string :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, wrap_width: f32) {
+    pen_pos := [2]f32{position.x, position.y + t_state.glyphs.ascent * font_size}
+
+    for i in 0 ..< len(str) {
+        c := str[i]
+        if c == '\n' {
+            pen_pos.x = position.x
+            pen_pos.y += line_height() * font_size
+            continue
+        }
+        if c == '\t' {
+            // tab stops are measured from the start of the string, not the window edge
+            pen_pos.x = position.x + next_tab_stop(pen_pos.x - position.x, font_size)
+            continue
+        }
+        // '\r' and every other control code: no glyph, no advance
+        if c < ' ' || c == 127 do continue
+
+        g := get_glyph(c)
+        line_width := pen_pos.x - position.x
+        if wrap_width > 0.0 && line_width + g.advance * font_size > wrap_width {
+            pen_pos.x = position.x
+            pen_pos.y += line_height() * font_size
+        }
+
+        instance := r.glyph_instance {
+            // pen goes to em here, so only the pen is scaled. The matrix is already in em
+            pen_offset         = pen_pos / font_size,
+            curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
+            color_and_font_px  = {color.r, color.g, color.b, font_size},
+            translation_matrix = g.translation_matrix,
+        }
+
+        // each vec4 packs two [start, end) ranges
+        for k in 0 ..< NUMBER_OF_BANDS / 2 {
+            h0, h1 := g.bands_loc[2 * k], g.bands_loc[2 * k + 1]
+            v0, v1 := g.bands_loc[NUMBER_OF_BANDS + 2 * k], g.bands_loc[NUMBER_OF_BANDS + 2 * k + 1]
+            instance.horizontal_band_locations[k] = {f32(h0.x), f32(h0.y), f32(h1.x), f32(h1.y)}
+            instance.vertical_band_locations[k] = {f32(v0.x), f32(v0.y), f32(v1.x), f32(v1.y)}
+        }
+        append(&t_state.instances, instance)
+        pen_pos.x += g.advance * font_size
+    }
+}
+
+flush :: proc() {
+    r.update_gpu_buffer(t_state.instances[:])
+    p_w, p_h := pl.get_framebuffer_size()
+    r.render(p_w, p_h)
+    clear(&t_state.instances)
 }
