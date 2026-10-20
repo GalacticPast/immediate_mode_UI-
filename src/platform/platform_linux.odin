@@ -482,6 +482,17 @@ get_display_scale :: proc() -> f32 {
     return p_l_state.display_scale
 }
 
+// physical framebuffer size
+get_framebuffer_size :: proc() -> (i32, i32) {
+    return cast(i32)(cast(f32)p_l_state.width * p_l_state.display_scale),
+        cast(i32)(cast(f32)p_l_state.height * p_l_state.display_scale)
+}
+
+get_window_size :: proc() -> (i32, i32) {
+    return p_l_state.width, p_l_state.height
+}
+
+
 translate_key_code :: proc "contextless" (xkb_key: u32) -> key_type {
     switch (xkb_key) {
         case wl.XKB_KEY_Escape:

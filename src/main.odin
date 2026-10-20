@@ -5,8 +5,6 @@ import pl "platform"
 import "text"
 import gl "vendor:OpenGL"
 
-WINDOW_WIDTH :: 600
-WINDOW_HEIGHT :: 400
 
 // this feels so weird
 // comming from 'C' land where I literally had to write everything by hand
@@ -21,7 +19,7 @@ main :: proc() {
         fmt.eprintln("couldnt find the executable directory:", err)
     }
 
-    if !pl.startup(WINDOW_WIDTH, WINDOW_HEIGHT) {
+    if !pl.startup(600, 400) {
         return
     }
 
@@ -29,16 +27,18 @@ main :: proc() {
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
+    display_scale := pl.get_display_scale()
+    gl.Viewport(0, 0, cast(i32)(f32(600) * display_scale), cast(i32)((f32(400) * display_scale)))
+
     text.init()
     defer text.deinit()
     text.load_font("assets/font/Archivo-Regular.ttf")
 
     run: bool = true
-    display_scale := pl.get_display_scale()
     //position: [2]f32 = {20 * display_scale, 20 * display_scale}
-    position: [2]f32 = {20, 20}
+    position: [2]f32 = {0, 0}
     color: [3]f32 = {1, 1, 1}
-    font_size := 36 * display_scale
+    font_size: f32 = 80
     wrap_width: f32 = 0.0
 
     for run {
@@ -64,12 +64,12 @@ main :: proc() {
             }
         }
         // draw
-        gl.ClearColor(0.4, 0.5, 0.0, 1.0)
+        gl.ClearColor(0, 0, 0, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
-        text.push_string("Hello, world!\n\tfrom odin", position, color, font_size, wrap_width)
+        text.push_string("H", position, color, font_size, wrap_width)
         // the egl window is never resized yet, so the framebuffer stays at the startup size
-        text.flush(WINDOW_WIDTH, WINDOW_HEIGHT)
+        text.flush(cast(u32)(600.0 * display_scale), cast(u32)(400.0 * display_scale))
 
         pl.swap_buffers()
         free_all(context.temp_allocator)

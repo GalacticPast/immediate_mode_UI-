@@ -2,6 +2,7 @@ package platform
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:reflect"
 import win "core:sys/windows"
 import "core:time"
@@ -17,7 +18,6 @@ platform_windows_state :: struct {
     width:          i32,
     height:         i32,
     display_scale:  f32,
-
     deadline:       time.Tick,
 }
 @(private = "file")
@@ -77,8 +77,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             )
             // SetWindowPos sends WM_SIZE, which recomputes the logical size with the new scale
             return 0
+        // still fall through to DefWindowProc, alt+f4 and the alt menu go through the SYSKEY messages
         case win.WM_KEYDOWN, win.WM_SYSKEYDOWN, win.WM_KEYUP, win.WM_SYSKEYUP:
-            e: event = {key = translate_key_code(w_param)}
+            e: event = {
+                key = translate_key_code(w_param),
+            }
             if msg == win.WM_KEYUP || msg == win.WM_SYSKEYUP {
                 e.type = .KEY_RELEASE
             } else {
@@ -87,10 +90,17 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
                 e.type = was_down ? .KEY_REPEAT : .KEY_PRESS
             }
             push_window_event(e)
-            // still fall through to DefWindowProc, alt+f4 and the alt menu go through the SYSKEY messages
         case win.WM_MOUSEMOVE:
-            // physical pixels, relative to the top left of the client area
-            push_window_event({type = .MOUSE_MOVE, pos = {win.GET_X_LPARAM(l_param), win.GET_Y_LPARAM(l_param)}})
+            push_window_event(
+                {
+                    type = .MOUSE_MOVE,
+                    // logical pixels
+                    pos  = {
+                        cast(i32)math.floor(f32(win.GET_X_LPARAM(l_param)) / p_w_state.display_scale),
+                        cast(i32)math.floor(f32(win.GET_Y_LPARAM(l_param)) / p_w_state.display_scale),
+                    },
+                },
+            )
             return 0
     }
 
@@ -291,6 +301,16 @@ swap_buffers :: proc() {
 
 get_display_scale :: proc() -> f32 {
     return p_w_state.display_scale
+}
+
+// physical framebuffer size
+get_framebuffer_size :: proc() -> (i32, i32) {
+    return cast(i32)(cast(f32)p_w_state.width * p_w_state.display_scale),
+        cast(i32)(cast(f32)p_w_state.height * p_w_state.display_scale)
+}
+
+get_window_size :: proc() -> (i32, i32) {
+    return p_w_state.width, p_w_state.height
 }
 
 // key_type already uses the windows virtual key codes as its values
