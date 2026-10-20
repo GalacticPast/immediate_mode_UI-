@@ -7,6 +7,8 @@ import "core:mem"
 import "core:os"
 import stbtt "vendor:stb/truetype"
 
+import pl "../platform" 
+
 curve :: struct {
     p0: [4]f32,
     p1: [4]f32, // control
@@ -262,9 +264,10 @@ push_string :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32
     }
 }
 
-flush :: proc(physical_width, physical_height: u32) {
+flush :: proc() {
     update_gpu_buffer(t_state.instances[:])
-    render(physical_width, physical_height)
+    p_w, p_h := pl.get_framebuffer_size()
+    render(p_w, p_h)
     clear(&t_state.instances)
 }
 

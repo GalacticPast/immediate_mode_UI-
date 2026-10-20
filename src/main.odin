@@ -27,8 +27,8 @@ main :: proc() {
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
-    display_scale := pl.get_display_scale()
-    gl.Viewport(0, 0, cast(i32)(f32(600) * display_scale), cast(i32)((f32(400) * display_scale)))
+    f_w, f_h := pl.get_framebuffer_size()
+    gl.Viewport(0, 0, f_w, f_h)
 
     text.init()
     defer text.deinit()
@@ -69,7 +69,7 @@ main :: proc() {
 
         text.push_string("H", position, color, font_size, wrap_width)
         // the egl window is never resized yet, so the framebuffer stays at the startup size
-        text.flush(cast(u32)(600.0 * display_scale), cast(u32)(400.0 * display_scale))
+        text.flush()
 
         pl.swap_buffers()
         free_all(context.temp_allocator)

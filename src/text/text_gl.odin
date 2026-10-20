@@ -157,7 +157,7 @@ update_gpu_buffer :: proc(instances: []glyph_instance) {
 }
 
 @(private)
-set_shader_uniforms :: proc(physical_width, physical_height: u32) {
+set_shader_uniforms :: proc(physical_width, physical_height: i32) {
     // the projection works in physical pixels, matching the buffer and font_px
     // top = 0, so y grows downwards
     ortho := linalg.matrix_ortho3d_f32(0, f32(physical_width), f32(physical_height), 0, -1, 1)
@@ -170,7 +170,7 @@ set_shader_uniforms :: proc(physical_width, physical_height: u32) {
 }
 
 @(private)
-render :: proc(physical_width, physical_height: u32) {
+render :: proc(physical_width, physical_height: i32) {
     gl.UseProgram(t_gl_state.shader)
 
     set_shader_uniforms(physical_width, physical_height)
