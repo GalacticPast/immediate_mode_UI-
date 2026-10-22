@@ -1,10 +1,12 @@
 package main
 import "core:fmt"
 import "core:os"
-import pl "platform"
 import "text"
 import gl "vendor:OpenGL"
 
+
+import pl "platform"
+import r "renderer"
 
 // this feels so weird
 // comming from 'C' land where I literally had to write everything by hand
@@ -32,13 +34,16 @@ main :: proc() {
 
     text.init()
     defer text.deinit()
-    text.load_font("assets/font/Archivo-Regular.ttf")
+    glyphs: ^text.glyphs = text.load_font("assets/font/Archivo-Regular.ttf")
+    r.init()
+    defer r.deinit()
+    r.upload_to_gpu(glyphs)
 
     run: bool = true
     //position: [2]f32 = {20 * display_scale, 20 * display_scale}
     position: [2]f32 = {0, 0}
     color: [3]f32 = {1, 1, 1}
-    font_size: f32 = 80
+    font_size: f32 = 12
     wrap_width: f32 = 0.0
 
     for run {
@@ -67,9 +72,12 @@ main :: proc() {
         gl.ClearColor(0, 0, 0, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
-        text.push_string("H", position, color, font_size, wrap_width)
-        // the egl window is never resized yet, so the framebuffer stays at the startup size
-        text.flush()
+        r.start_command()
+        r.push({position, {65, 65}}, {0, 0, 0.4})
+        r.push("Havavavavavafads;lkfjasdihadkgaskdjgh8oiurijeagndbmn", position, color, font_size, wrap_width)
+        r.end_command()
+
+        r.render()
 
         pl.swap_buffers()
         free_all(context.temp_allocator)

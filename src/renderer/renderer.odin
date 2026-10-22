@@ -1,5 +1,0 @@
-package renderer
-
-init :: proc() {
-
-}

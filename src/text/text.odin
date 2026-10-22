@@ -7,8 +7,6 @@ import "core:mem"
 import "core:os"
 import stbtt "vendor:stb/truetype"
 
-import pl "../platform"
-
 curve :: struct {
     p0: [4]f32,
     p1: [4]f32, // control
@@ -60,12 +58,10 @@ init :: proc(allocator := context.allocator) {
     t_state = new(text_state, allocator)
     assert(t_state != nil)
     t_state.allocator = allocator
-    t_state.instances = make([dynamic]r.glyph_instance, allocator)
 }
 
 deinit :: proc() {
     delete_glyphs(&t_state.glyphs)
-    delete(t_state.instances)
     free(t_state, t_state.allocator)
     t_state = nil
 }
@@ -159,51 +155,9 @@ load_font :: proc(file_path: string) -> ^glyphs {
     return &t_state.glyphs
 }
 
-@(private)
-line_height :: proc() -> f32 {
-    g := &t_state.glyphs
-    return g.ascent - g.descent + g.line_gap
+get_current_font :: proc() -> ^glyphs {
+    return &t_state.glyphs
 }
-
-// bytes outside ASCII (e.g. UTF-8 lead bytes) fall back to '?'
-@(private)
-get_glyph :: proc(c: u8) -> ^glyph_data {
-    code := c
-    if code >= TEXT_GLYPH_COUNT do code = '?'
-    return &t_state.glyphs.data[code]
-}
-
-@(private)
-next_tab_stop :: proc(pen_x: f32, font_size: f32) -> f32 {
-    tab := TEXT_TAB_WIDTH * t_state.glyphs.data[' '].advance * font_size
-    return (math.floor(pen_x / tab) + 1.0) * tab
-}
-
-// no wrapping: only '\n' starts a new line
-calculate_size :: proc(str: string, font_size: f32) -> [2]f32 {
-    line_width: f32 = 0.0
-    max_width: f32 = 0.0
-    line_count: i32 = 1
-
-    for i in 0 ..< len(str) {
-        c := str[i]
-        switch {
-            case c == '\n':
-                max_width = max(max_width, line_width)
-                line_width = 0.0
-                line_count += 1
-            case c == '\t':
-                line_width = next_tab_stop(line_width, font_size)
-            case c < ' ' || c == 127:
-            case:
-                line_width += get_glyph(c).advance * font_size
-        }
-    }
-    max_width = max(max_width, line_width)
-
-    return {max_width, f32(line_count) * line_height() * font_size}
-}
-
 
 @(private)
 solve_bezier :: proc(a, b, c, t: f32) -> f32 {
