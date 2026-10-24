@@ -14,6 +14,12 @@ xkb_state :: struct {}
 XKB_CONTEXT_NO_FLAGS :: 0
 XKB_KEYMAP_FORMAT_TEXT_V1 :: 1
 XKB_KEYMAP_COMPILE_NO_FLAGS :: 0
+XKB_STATE_MODS_EFFECTIVE :: 1 << 3
+XKB_MOD_NAME_SHIFT :: "Shift"
+XKB_MOD_NAME_CTRL :: "Control"
+XKB_MOD_NAME_ALT :: "Mod1"
+// Shift+Tab arrives as this keysym once the modifier state is applied
+XKB_KEY_ISO_Left_Tab :: 0xfe20
 
 // ASCII
 XKB_KEY_BackSpace :: 0xff08 /* U+0008 BACKSPACE */
@@ -207,4 +213,5 @@ foreign xkb {
     xkb_state_update_mask :: proc(state: ^xkb_state, depressed_mods, latched_mods, locked_mods: u32, depressed_layout, latched_layout, locked_layout: u32) -> c.int ---
     xkb_state_key_get_one_sym :: proc(state: ^xkb_state, key: u32) -> u32 ---
     xkb_state_key_get_utf32 :: proc(state: ^xkb_state, key: u32) -> u32 ---
+    xkb_state_mod_name_is_active :: proc(state: ^xkb_state, name: cstring, type: c.int) -> c.int ---
 }

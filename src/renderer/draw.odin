@@ -96,7 +96,8 @@ push :: proc {
     push_rect,
 }
 
-push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, wrap_width: f32) {
+push_text :: proc(str: string, position: [2]f32, color: [4]f32, font_size: f32, wrap_width: f32) {
+    if color.a <= 0 do return
     if font_size <= 0 do return
     d_s := pl.get_display_scale()
     font_px := font_size * d_s
@@ -135,6 +136,8 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             color_and_font_px  = {color.r, color.g, color.b, font_px},
             translation_matrix = g.translation_matrix,
         }
+        // Column 2 of the glyph matrix only scales z, which is always 0; the shader reads alpha from it.
+        instance.translation_matrix[0, 2] = color.a
 
         // each vec4 packs two [start, end) ranges
         for k in 0 ..< text.NUMBER_OF_BANDS / 2 {
@@ -148,22 +151,28 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
     }
 }
 
-push_rect :: proc(r: Rect, color: [3]f32, radius: f32 = 1, border: f32 = 0) {
+// Corner order for radii and colors: top-left, top-right, bottom-right, bottom-left.
+push_rect_ex :: proc(r: Rect, colors: [4][4]f32, radii: [4]f32, border: f32 = 0, softness: f32 = 0) {
+    if colors[0].a <= 0 && colors[1].a <= 0 && colors[2].a <= 0 && colors[3].a <= 0 do return
     d_s := pl.get_display_scale()
     pos := r.pos * d_s
     dimensions := r.dimensions * d_s
     instance := Draw_Instance {
-        pen_offset                = {pos.x, pos.y},
-        curve_indices             = {dimensions.x, dimensions.y},
-        color_and_font_px         = {color.r, color.g, color.b, 0},
-        translation_matrix        = {},
-        horizontal_band_locations = {},
-        vertical_band_locations   = {},
+        pen_offset    = {pos.x, pos.y},
+        curve_indices = {dimensions.x, dimensions.y},
     }
-    // Box instances reuse the otherwise unused glyph matrix for SDF parameters.
-    instance.translation_matrix[0, 0] = radius*d_s
-    instance.translation_matrix[1, 0] = border*d_s
+    // Box instances reuse the otherwise unused glyph fields for SDF parameters (see text_vertex.glsl).
+    for i in 0 ..< 4 {
+        instance.translation_matrix[i, 0] = radii[i]*d_s
+        instance.horizontal_band_locations[i] = colors[i]
+    }
+    instance.translation_matrix[0, 1] = border*d_s
+    instance.translation_matrix[1, 1] = softness*d_s
     append(&d_state.gpu_buffer, instance)
+}
+
+push_rect :: proc(r: Rect, color: [4]f32, radius: f32 = 0, border: f32 = 0, softness: f32 = 0) {
+    push_rect_ex(r, {color, color, color, color}, {radius, radius, radius, radius}, border, softness)
 }
 
 end_command :: proc() {

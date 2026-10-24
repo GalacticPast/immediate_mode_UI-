@@ -29,9 +29,10 @@ flat in vec2 frag_glyph_min;
 flat in vec2 frag_glyph_max;
 flat in mat4 frag_h_band_loc;
 flat in mat4 frag_v_band_loc;
-flat in vec3 frag_color;
+flat in vec4 frag_color;
 flat in float frag_font_px;
 flat in vec2 frag_box_half_size;
+flat in vec4 frag_box_radii;
 flat in vec2 frag_box_style;
 
 // Paper Table 1: 16-bit lookup. For input code i, bit 2i is the t1 contribution and bit 2i+1 the t2 contribution.
@@ -194,18 +195,32 @@ void main()
         if (any(lessThanEqual(frag_box_half_size, vec2(0.0))))
             discard;
 
-        // Rounded-box SDF in physical pixels. Clamp the radius for very small boxes.
-        float radius = clamp(frag_box_style.x, 0.0, min(frag_box_half_size.x, frag_box_half_size.y));
+        // Rounded-box SDF in physical pixels, y down. Each quadrant uses its own corner radius.
+        vec4 radii = frag_box_radii;
+        float radius = frag_pos.x < 0.0 ? (frag_pos.y < 0.0 ? radii.x : radii.w)
+                                        : (frag_pos.y < 0.0 ? radii.y : radii.z);
+        radius = clamp(radius, 0.0, min(frag_box_half_size.x, frag_box_half_size.y));
         vec2 q = abs(frag_pos) - frag_box_half_size + vec2(radius);
         float distance_px = length(max(q, vec2(0.0)))
                           + min(max(q.x, q.y), 0.0) - radius;
-        float alpha = clamp(0.5 - distance_px, 0.0, 1.0);
-        if (frag_box_style.y > 0.0)
-            alpha *= clamp(distance_px + frag_box_style.y + 0.5, 0.0, 1.0);
+
+        float border = frag_box_style.x;
+        float softness = frag_box_style.y;
+        float alpha = softness > 0.0 ? 1.0 - smoothstep(-softness, softness, distance_px)
+                                     : clamp(0.5 - distance_px, 0.0, 1.0);
+        if (border > 0.0)
+            alpha *= clamp(distance_px + border + 0.5, 0.0, 1.0);
+
+        // Bilinear blend of the corner colors (top-left, top-right, bottom-right, bottom-left).
+        vec2 uv = clamp(frag_pos / (2.0 * frag_box_half_size) + 0.5, 0.0, 1.0);
+        vec4 top = mix(frag_h_band_loc[0], frag_h_band_loc[1], uv.x);
+        vec4 bottom = mix(frag_h_band_loc[3], frag_h_band_loc[2], uv.x);
+        vec4 color = mix(top, bottom, uv.y);
+        alpha *= color.a;
         if (alpha <= 0.0)
             discard;
 
-        FragColor = vec4(frag_color, alpha);
+        FragColor = vec4(color.rgb, alpha);
         return;
     }
 
@@ -243,11 +258,10 @@ void main()
         coverage_sum += combine_rays(horizontal_coverage, horizontal_weight, vertical_coverage, vertical_weight);
     }
 
-    float alpha = clamp(coverage_sum / float(SAMPLES_PER_AXIS), 0.0, 1.0);
+    float alpha = clamp(coverage_sum / float(SAMPLES_PER_AXIS), 0.0, 1.0) * frag_color.a;
 
     if (alpha <= 0.0)
         discard;
 
-    vec3 color = frag_color ;
-    FragColor = vec4(color, alpha);
+    FragColor = vec4(frag_color.rgb, alpha);
 }

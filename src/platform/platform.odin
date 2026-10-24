@@ -19,9 +19,17 @@ Event_Type :: enum {
     MOUSE_RELEASE,
     MOUSE_LEAVE,
     INPUT_CANCEL,
+    // a typed character, after keyboard layout and modifiers. Arrives next to the KEY_PRESS that produced it
+    TEXT_INPUT,
 }
 
 Mouse_Button :: enum { Left, Right, Middle }
+
+Modifier :: enum { Shift, Ctrl, Alt }
+Modifiers :: bit_set[Modifier]
+
+// The few standard shapes a UI needs. Each backend maps them to its native cursors.
+Cursor :: enum { Default, Pointer, Text, Resize_EW, Resize_NS, Resize_NWSE, Move, Not_Allowed }
 
 Vector2 :: [2]i32
 
@@ -150,7 +158,9 @@ Event :: struct {
     key:  Key_Type,
     pos:  Vector2,
     button: Mouse_Button,
-    scroll: f32,
+    scroll: [2]f32, // logical pixels; positive y moves content up (scrolls down)
+    mods: Modifiers,
+    text: rune,
 }
 
 Event_List :: struct {

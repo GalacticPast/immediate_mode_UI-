@@ -30,13 +30,9 @@ main :: proc() {
     state: ui.State
     ui.init(&state, r.calculate_size)
     defer ui.deinit(&state)
-    demo := Demo {
-        color         = {0.27, 0.55, 0.86},
-        sidebar_width = 230,
-        enabled       = true,
-        scene_open    = true,
-    }
-    shift_down: bool
+    app: App
+    app_init(&app)
+    defer app_destroy(&app)
     previous := time.tick_now()
     frame_index := 0
     pl.request_deadline(previous)
@@ -45,20 +41,23 @@ main :: proc() {
         quit := false
         for e := events.head; e != nil; e = e.next {
             if e.type == .WINDOW_CLOSE do quit = true
-            if e.type == .KEY_PRESS && e.key == .ESCAPE do demo.show_help = false
         }
         if quit do break
         now := time.tick_now()
         dt := f32(time.tick_diff(previous, now)) / f32(time.Second)
         previous = now
         width, height := pl.get_window_size()
-        inputs := ui_events(events, &shift_down)
+        inputs := ui_events(events)
         when UI_SMOKE_TEST {
-            smoke_before_build(&state, &demo, frame_index, &inputs)
+            smoke_before_build(&state, &app, frame_index, &inputs)
         }
+        build_start := time.tick_now()
         ui.begin_build(&state, {f32(width), f32(height)}, inputs[:], dt)
-        demo_build(&state, &demo)
+        app_build(&state, &app)
         ui.end_build(&state)
+        app.build_ms = f32(time.duration_milliseconds(time.tick_since(build_start)))
+        if app.quit do break
+        pl.set_cursor(pl.Cursor(int(state.cursor)))
         gl.ClearColor(0.075, 0.085, 0.105, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)
         ui_render(state.commands[:])
@@ -67,13 +66,13 @@ main :: proc() {
         }
         pl.swap_buffers()
         // Poll while animating; otherwise the UI sleeps until an input/resize event.
-        if state.animating || state.active != 0 || UI_SMOKE_TEST {
+        if state.animating || state.active != {} || UI_SMOKE_TEST {
             pl.request_deadline(time.tick_add(time.tick_now(), 16 * time.Millisecond))
         }
         free_all(context.temp_allocator)
         frame_index += 1
         when UI_SMOKE_TEST {
-            if frame_index == 7 do break
+            if frame_index == SMOKE_FRAMES do break
         }
     }
 }

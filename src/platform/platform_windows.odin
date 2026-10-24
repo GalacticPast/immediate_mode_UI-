@@ -19,7 +19,8 @@ Platform_Windows_State :: struct {
     height:         i32,
     display_scale:  f32,
     deadline:       time.Tick,
-    mouse_down:     bool,
+    buttons_down:   bit_set[Mouse_Button],
+    cursor:         Cursor,
 }
 @(private = "file")
 p_w_state: Platform_Windows_State
@@ -52,40 +53,67 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             win.PostQuitMessage(0)
             return 0
         case win.WM_KILLFOCUS, win.WM_CANCELMODE:
-            p_w_state.mouse_down = false
+            p_w_state.buttons_down = {}
             push_window_event({type = .INPUT_CANCEL})
             win.ReleaseCapture()
             return 0
         case win.WM_CAPTURECHANGED:
-            if p_w_state.mouse_down {
-                p_w_state.mouse_down = false
+            // our own ReleaseCapture happens after the last button is cleared, so this is another window taking it
+            if p_w_state.buttons_down != {} {
+                p_w_state.buttons_down = {}
                 push_window_event({type = .INPUT_CANCEL})
             }
             return 0
         case win.WM_MOUSELEAVE:
             push_window_event({type = .MOUSE_LEAVE})
             return 0
-        case win.WM_LBUTTONDOWN, win.WM_LBUTTONUP:
+        case win.WM_LBUTTONDOWN, win.WM_LBUTTONUP, win.WM_RBUTTONDOWN, win.WM_RBUTTONUP, win.WM_MBUTTONDOWN, win.WM_MBUTTONUP:
             pos := Vector2{i32(f32(win.GET_X_LPARAM(l_param))/p_w_state.display_scale),
                            i32(f32(win.GET_Y_LPARAM(l_param))/p_w_state.display_scale)}
-            if msg == win.WM_LBUTTONDOWN {
-                p_w_state.mouse_down = true
-                win.SetCapture(hwnd)
-                push_window_event({type = .MOUSE_PRESS, pos = pos, button = .Left})
+            button: Mouse_Button
+            down := false
+            switch msg {
+                case win.WM_LBUTTONDOWN: button, down = .Left, true
+                case win.WM_LBUTTONUP: button = .Left
+                case win.WM_RBUTTONDOWN: button, down = .Right, true
+                case win.WM_RBUTTONUP: button = .Right
+                case win.WM_MBUTTONDOWN: button, down = .Middle, true
+                case win.WM_MBUTTONUP: button = .Middle
+            }
+            if down {
+                // keep receiving moves and the release while the pointer is outside the window
+                if p_w_state.buttons_down == {} do win.SetCapture(hwnd)
+                p_w_state.buttons_down += {button}
+                push_window_event({type = .MOUSE_PRESS, pos = pos, button = button})
             } else {
-                p_w_state.mouse_down = false
-                push_window_event({type = .MOUSE_RELEASE, pos = pos, button = .Left})
-                win.ReleaseCapture()
+                p_w_state.buttons_down -= {button}
+                push_window_event({type = .MOUSE_RELEASE, pos = pos, button = button})
+                if p_w_state.buttons_down == {} do win.ReleaseCapture()
             }
             return 0
-        case win.WM_MOUSEWHEEL:
+        case win.WM_MOUSEWHEEL, win.WM_MOUSEHWHEEL:
             point := win.POINT{win.GET_X_LPARAM(l_param), win.GET_Y_LPARAM(l_param)}
             win.ScreenToClient(hwnd, &point)
-            delta := i16(win.HIWORD(w_param))
+            delta := f32(i16(win.HIWORD(w_param)))/120*48
+            // a positive vertical delta means the wheel rotated away from the user, which scrolls up
+            scroll := msg == win.WM_MOUSEWHEEL ? [2]f32{0, -delta} : [2]f32{delta, 0}
             push_window_event({type = .MOUSE_SCROLL,
                 pos = {i32(f32(point.x)/p_w_state.display_scale), i32(f32(point.y)/p_w_state.display_scale)},
-                scroll = -f32(delta)/120*48})
+                scroll = scroll})
             return 0
+        case win.WM_CHAR:
+            // utf-16 code units; the ASCII-only text backend has no use for surrogate pairs yet
+            c := rune(w_param)
+            if c >= 32 && c != 127 && (c < 0xD800 || c > 0xDFFF) {
+                push_window_event({type = .TEXT_INPUT, text = c})
+            }
+            return 0
+        case win.WM_SETCURSOR:
+            // outside the client area DefWindowProc picks the resize arrows
+            if win.LOWORD(l_param) == win.HTCLIENT {
+                win.SetCursor(load_cursor(p_w_state.cursor))
+                return 1
+            }
         case win.WM_SIZE:
             if w_param == win.SIZE_MINIMIZED {
                 break
@@ -151,7 +179,41 @@ push_window_event :: proc(e: Event) {
     }
     node := new(Event)
     node^ = e
+    node.mods = current_mods()
     push_event(node)
+}
+
+@(private = "file")
+current_mods :: proc() -> Modifiers {
+    mods: Modifiers
+    // the high bit of GetKeyState is set while the key is down
+    if win.GetKeyState(win.VK_SHIFT) < 0 do mods += {.Shift}
+    if win.GetKeyState(win.VK_CONTROL) < 0 do mods += {.Ctrl}
+    if win.GetKeyState(win.VK_MENU) < 0 do mods += {.Alt}
+    return mods
+}
+
+@(private = "file")
+load_cursor :: proc(c: Cursor) -> win.HCURSOR {
+    name: cstring
+    switch c {
+        case .Default: name = win.IDC_ARROW
+        case .Pointer: name = win.IDC_HAND
+        case .Text: name = win.IDC_IBEAM
+        case .Resize_EW: name = win.IDC_SIZEWE
+        case .Resize_NS: name = win.IDC_SIZENS
+        case .Resize_NWSE: name = win.IDC_SIZENWSE
+        case .Move: name = win.IDC_SIZEALL
+        case .Not_Allowed: name = win.IDC_NO
+    }
+    return win.LoadCursorA(nil, name)
+}
+
+set_cursor :: proc(c: Cursor) {
+    if c == p_w_state.cursor do return
+    p_w_state.cursor = c
+    // WM_SETCURSOR only arrives when the mouse moves, so apply the change now
+    win.SetCursor(load_cursor(c))
 }
 
 startup :: proc(width, height: i32) -> (ok: bool) {

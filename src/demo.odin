@@ -1,149 +1,228 @@
 package main
 
 import "core:fmt"
+import "core:strings"
 import ui "ui"
 
 Demo :: struct {
-    color: [3]f32,
-    sidebar_width: f32,
-    enabled, advanced, scene_open, show_help: bool,
-    page, material, clicks: int,
-    exposure: f32,
+    color:                                   [3]f32,
+    exposure, roughness, progress:           f32,
+    enabled:                                 bool,
+    shading, quality, selected, applied:     int,
+    sidebar_width:                           f32,
+    color_open, surface_open, name_open:     bool,
+    show_inspector, show_window1, show_about: bool,
+    name, committed:                         [64]u8,
+    name_len, committed_len:                 int,
+    applying:                                bool,
+    search:                                  [32]u8,
+    search_len:                              int,
 }
 
-demo_build :: proc(s: ^ui.State, d: ^Demo) {
-    outer := ui.begin_container(s, "workspace", .Y, ui.fill(), ui.fill(), {16, 16}, 12)
-    outer.style.background = {0.075, 0.085, 0.105}
-    outer.flags += {.Background}
+QUALITY := [?]string{"Draft", "Preview", "Final", "Ultra"}
 
-    ui.begin_container(s, "header", .X, ui.fill(), ui.px(58), {}, 12)
-    ui.begin_container(s, "heading", .Y, ui.fill(), ui.fill(), {}, 1)
-    title := ui.label(s, "BOX LABORATORY")
-    title.style.font_size = 22
-    title.style.text = {0.92, 0.94, 0.98}
-    subtitle := ui.label(s, "Immediate-mode tools / Odin + OpenGL")
-    subtitle.style.font_size = 12
-    subtitle.style.text = {0.48, 0.55, 0.65}
-    ui.end_container(s)
-    style := s.style
-    style.width, style.height = ui.px(100), ui.px(32)
-    ui.push_style(s, style)
-    if ui.button(s, "How it works").clicked do d.show_help = true
-    ui.pop_style(s)
-    ui.end_container(s)
+demo_init :: proc(d: ^Demo) {
+    d^ = {
+        color          = {0.27, 0.55, 0.86},
+        roughness      = 0.4,
+        enabled        = true,
+        quality        = 1,
+        sidebar_width  = 230,
+        color_open     = true,
+        surface_open   = true,
+        name_open      = true,
+        show_window1   = true,
+    }
+    d.name_len = copy(d.name[:], "Untitled")
+    d.committed_len = copy(d.committed[:], "Untitled")
+}
 
-    body := ui.begin_container(s, "body", .X, ui.fill(), ui.fill(), {}, 6)
-    max_sidebar := max(f32(150), s.viewport.x-470)
-    d.sidebar_width = clamp(d.sidebar_width, 150, max_sidebar)
-    sidebar := ui.begin_container(s, "sidebar", .Y, ui.px(d.sidebar_width), ui.fill(), {12, 12}, 8, {.Background, .Border, .Clip})
-    sidebar.style.background = {0.10, 0.115, 0.14}
-    ui.label(s, "WORKSPACE")
-    if ui.button(s, "Color inspector").clicked do d.page = 0
-    if ui.button(s, "Layout stress test").clicked do d.page = 1
-    ui.checkbox(s, "Show box bounds", &s.debug_bounds)
-    if ui.tree_header(s, "Scene collection", &d.scene_open) {
-        list := ui.begin_container(s, "objects", .Y, ui.fill(), ui.fill(), {2, 4}, 3, {.Scroll, .Clip})
-        list.style.background = {0.08, 0.09, 0.11}
-        list.flags += {.Background}
+demo_reset :: proc(d: ^Demo) {
+    d.color = {0.27, 0.55, 0.86}
+    d.exposure, d.roughness = 0, 0.4
+}
+
+// The original widget tour, now one tab of the app.
+gallery_build :: proc(s: ^ui.State, d: ^Demo) {
+    // a pretend job started by Apply, so the progress bar has something to show
+    if d.applying {
+        d.progress += s.dt * 0.6
+        s.animating = true
+        if d.progress >= 1 {
+            d.progress, d.applying = 0, false
+            d.applied += 1
+        }
+    }
+
+    if ui.row(s, ui.fill(), ui.fill(), "body") {
+        demo_sidebar(s, d)
+        demo_divider(s, d)
+        demo_inspector(s, d)
+    }
+    demo_windows(s, d)
+}
+
+demo_sidebar :: proc(s: ^ui.State, d: ^Demo) {
+    side := s.theme.base
+    side.background = s.theme.menu_bar.background
+    ui.set_next_pref_size(s, ui.px(d.sidebar_width), ui.fill())
+    ui.set_next_palette(s, side)
+    sidebar := ui.build_box(s, {.Draw_Background, .Clip}, "sidebar")
+    // a deferred scope opened in an if condition ends with that if, so the content goes inside it
+    if ui.parent(s, sidebar) {
+        if ui.panel(s, 8) do demo_sidebar_content(s, d)
+    }
+}
+
+demo_sidebar_content :: proc(s: ^ui.State, d: ^Demo) {
+    ui.label_weak(s, "MATERIALS")
+    search := ui.line_edit(s, "search", d.search[:], &d.search_len)
+    if ui.tooltip(s, search) do ui.label(s, "Filter the list by name")
+    ui.spacer(s, ui.px(6))
+    filter := strings.to_lower(string(d.search[:d.search_len]), context.temp_allocator)
+    menu_key := ui.key_from_string(0, "material_menu")
+    if ui.scroll_region(s, "materials") {
+        selected := s.theme.base
+        selected.background = selected.accent
+        selected.background.a = 0.35
         for i in 0 ..< 40 {
-            if ui.button(s, fmt.tprintf("Material %02d###material_%d", i+1, i)).clicked do d.material = i
-        }
-        ui.end_container(s)
-    }
-    ui.end_container(s)
-
-    divider := ui.box(s, "divider", {.Background, .Clickable})
-    divider.style.width, divider.style.height = ui.px(6), ui.fill()
-    divider.style.background = {0.17, 0.22, 0.29}
-    if divider.signal.dragging || divider.signal.pressed || divider.signal.released {
-        d.sidebar_width = clamp(divider.signal.drag_pos.x-body.rect.pos.x-3, 150, max_sidebar)
-        sidebar.style.width = ui.px(d.sidebar_width)
-    }
-    d.sidebar_width += f32(divider.signal.step)*8
-
-    panel := ui.begin_container(s, "inspector", .Y, ui.fill(), ui.fill(), {18, 16}, 12, {.Background, .Border, .Clip, .Scroll})
-    panel.style.background = {0.115, 0.13, 0.16}
-    heading := ui.label(s, fmt.tprintf("Material %02d / %s", d.material+1, d.page == 0 ? "Color" : "Layout"))
-    heading.style.font_size = 19
-    if d.page == 0 {
-        ui.label(s, "BASE COLOR")
-        ui.begin_container(s, "rgb", .X, ui.fill(), ui.px(106), {}, 14)
-        ui.begin_container(s, "channels", .Y, ui.fill(), ui.fill(), {}, 8)
-        channel_style := s.style
-        channel_style.height = ui.px(30)
-        channel_style.accent = {0.95, 0.37, 0.37}
-        ui.push_style(s, channel_style)
-        ui.slider(s, "Red", &d.color.r, 0, 1)
-        ui.pop_style(s)
-        channel_style.accent = {0.37, 0.8, 0.49}
-        ui.push_style(s, channel_style)
-        ui.slider(s, "Green", &d.color.g, 0, 1)
-        ui.pop_style(s)
-        channel_style.accent = {0.37, 0.61, 0.98}
-        ui.push_style(s, channel_style)
-        ui.slider(s, "Blue", &d.color.b, 0, 1)
-        ui.pop_style(s)
-        ui.end_container(s)
-        ui.color_preview(s, "preview", d.color, ui.px(120), ui.fill())
-        ui.end_container(s)
-        info := ui.label(s, fmt.tprintf("RGB  %03d  %03d  %03d", int(d.color.r*255), int(d.color.g*255), int(d.color.b*255)))
-        info.style.text = {0.55, 0.64, 0.75}
-        ui.checkbox(s, "Enable material", &d.enabled)
-        ui.slider(s, "Exposure", &d.exposure, -2, 2)
-        ui.begin_container(s, "actions", .X, ui.fill(), ui.px(32), {}, 8)
-        if ui.button(s, "Reset").clicked {
-            d.color = {0.27, 0.55, 0.86}
-            d.exposure = 0
-        }
-        if ui.button(s, "Apply", !d.enabled).clicked do d.clicks += 1
-        ui.button(s, "Unavailable", true)
-        ui.end_container(s)
-        if ui.tree_header(s, "Advanced settings", &d.advanced) {
-            ui.begin_container(s, "advanced", .Y, ui.fill(), ui.children(), {10, 6}, 4, {.Background, .Border})
-            ui.label(s, "Preview shading")
-            ui.radio(s, "Material 01", &d.material, 0)
-            ui.radio(s, "Material 02", &d.material, 1)
-            ui.radio(s, "Material 03", &d.material, 2)
-            ui.end_container(s)
-        }
-        ui.label(s, fmt.tprintf("Applied %d time%s", d.clicks, d.clicks == 1 ? "" : "s"))
-        ui.label(s, "Tab to focus / arrows to adjust sliders")
-    } else {
-        ui.label(s, "Rows share space using 1 : 2 : 1 fill weights.")
-        for i in 0 ..< 30 {
-            ui.begin_container(s, fmt.tprintf("row_%d", i), .X, ui.fill(), ui.px(42), {}, 8)
-            for j in 0 ..< 3 {
-                b := ui.color_preview(s, fmt.tprintf("cell_%d", j),
-                    {0.14+f32(j)*0.04, 0.22+f32(i%4)*0.025, 0.32+f32(j)*0.05},
-                    ui.fill(j == 1 ? 2 : 1), ui.fill())
-                ui.set_text(s, b, fmt.tprintf("%d / %d", i+1, j+1))
-                b.style.text_align = .Center
+            name := fmt.tprintf("Material %02d", i + 1)
+            if len(filter) > 0 && !strings.contains(strings.to_lower(name, context.temp_allocator), filter) do continue
+            if d.selected == i {
+                ui.set_next_palette(s, selected)
+                ui.set_next_flags(s, {.Draw_Background})
             }
-            ui.end_container(s)
+            sig := ui.button_flat(s, fmt.tprintf("%s###material%d", name, i))
+            if ui.clicked(sig) do d.selected = i
+            if ui.right_clicked(sig) {
+                d.selected = i
+                ui.ctx_menu_open(s, menu_key)
+            }
         }
     }
-    ui.end_container(s)
-    ui.end_container(s)
-    status := ui.label(s, fmt.tprintf("%d boxes   |   drag divider to resize   |   wheel to scroll", len(s.order)))
-    status.style.font_size = 12
-    status.style.text = {0.48, 0.55, 0.65}
-    ui.end_container(s)
+    if ui.ctx_menu(s, menu_key) {
+        ui.label_weak(s, fmt.tprintf("Material %02d", d.selected + 1))
+        if ui.clicked(ui.menu_item(s, "Select next")) do d.selected = (d.selected + 1) % 40
+        if ui.clicked(ui.menu_item(s, "Reset color")) do demo_reset(d)
+        if ui.clicked(ui.menu_item(s, "Open in window")) do d.show_inspector = true
+    }
+}
 
-    if d.show_help {
-        ui.push_parent(s, s.root)
-        backdrop := ui.begin_container(s, "help_backdrop", .Y, ui.px(s.viewport.x), ui.px(s.viewport.y), {}, 0, {.Floating, .Clickable})
-        if backdrop.signal.clicked do d.show_help = false
-        popup := ui.begin_container(s, "help", .Y, ui.px(440), ui.children(), {22, 18}, 10, {.Floating, .Background, .Border, .Clickable, .Clip})
-        popup.floating_pos = {max(0, (s.viewport.x-440)*0.5), max(0, (s.viewport.y-290)*0.5)}
-        popup.style.background = {0.12, 0.15, 0.20}
-        ui.label(s, "RAD-STYLE BOX UI")
-        ui.label(s, "Each frame rebuilds a tree of reusable boxes.")
-        ui.label(s, "Layout resolves sizes, then places children.")
-        ui.label(s, "Stable keys retain focus, dragging and scrolling.")
-        ui.label(s, "The renderer draws the completed tree in order.")
-        if ui.button(s, "Close").clicked do d.show_help = false
-        ui.end_container(s)
-        ui.end_container(s)
-        ui.pop_parent(s)
+demo_divider :: proc(s: ^ui.State, d: ^Demo) {
+    line := s.theme.base
+    line.background = s.theme.base.border
+    ui.set_next_pref_size(s, ui.px(4), ui.fill())
+    ui.set_next_palette(s, line)
+    ui.set_next_hover_cursor(s, .Resize_EW)
+    divider := ui.build_box(s, {.Mouse_Clickable, .Draw_Background, .Draw_Hot_Effects}, "divider")
+    sig := ui.signal_from_box(s, divider)
+    if .Left_Pressed in sig.flags do ui.store_drag_data(s, d.sidebar_width)
+    if ui.dragging(sig) do d.sidebar_width = ui.get_drag_data(s, f32) + ui.drag_delta(s).x
+    d.sidebar_width = clamp(d.sidebar_width, 150, max(150, s.viewport.x - 420))
+}
+
+demo_inspector :: proc(s: ^ui.State, d: ^Demo) {
+    if ui.scroll_region(s, "inspector") {
+        if ui.panel(s, 16, "content", ui.children_sum()) do demo_inspector_content(s, d)
+    }
+}
+
+demo_inspector_content :: proc(s: ^ui.State, d: ^Demo) {
+    ui.set_next_font_size(s, 22)
+    ui.set_next_pref_height(s, ui.px(34))
+    ui.label(s, fmt.tprintf("Material %02d - %s", d.selected + 1, string(d.committed[:d.committed_len])))
+    ui.label_weak(s, "Boxes rebuilt every frame, laid out and drawn like RAD Debugger's UI")
+    ui.spacer(s, ui.px(10))
+
+    ui.expander(s, "Base color", &d.color_open)
+    if d.color_open {
+        ui.row(s, ui.fill(), ui.children_sum(), "color")
+        ui.spacer(s, ui.px(24))
+        if ui.column(s, ui.fill(), ui.children_sum()) {
+            ui.slider_n(s, "RGB", d.color[:], 0, 1)
+            ui.spacer(s, ui.px(6))
+            ui.slider(s, "Exposure", &d.exposure, -2, 2)
+            ui.labelf(s, "#%02x%02x%02x", u8(d.color.r * 255), u8(d.color.g * 255), u8(d.color.b * 255))
+        }
+        ui.spacer(s, ui.px(12))
+        ui.set_next_pref_size(s, ui.px(96), ui.px(84))
+        swatch := ui.color_swatch(s, "swatch", {d.color.r, d.color.g, d.color.b, 1})
+        if ui.tooltip(s, swatch) {
+            ui.label(s, "Current base color")
+            ui.label_weak(s, fmt.tprintf("exposure %+.2f", d.exposure))
+        }
+    }
+
+    ui.expander(s, "Surface", &d.surface_open)
+    if d.surface_open {
+        ui.row(s, ui.fill(), ui.children_sum(), "surface")
+        ui.spacer(s, ui.px(24))
+        if ui.column(s, ui.fill(), ui.children_sum()) {
+            ui.slider(s, "Roughness", &d.roughness, 0, 1)
+            ui.checkbox(s, "Enable material", &d.enabled)
+            ui.label_weak(s, "Shading")
+            ui.radio(s, "Flat", &d.shading, 0)
+            ui.radio(s, "Smooth", &d.shading, 1)
+            ui.radio(s, "Physically based", &d.shading, 2)
+            ui.combo(s, "Quality", &d.quality, QUALITY[:])
+        }
+    }
+
+    ui.expander(s, "Name", &d.name_open)
+    if d.name_open {
+        ui.row(s, ui.fill(), ui.children_sum(), "naming")
+        ui.spacer(s, ui.px(24))
+        if ui.column(s, ui.fill(), ui.children_sum()) {
+            name := ui.line_edit(s, "name", d.name[:], &d.name_len)
+            if ui.committed(name) do d.committed_len = copy(d.committed[:], d.name[:d.name_len])
+            ui.label_weak(s, "Click, or Tab + Enter, to edit. Enter commits, Escape stops.")
+        }
+    }
+
+    ui.spacer(s, ui.px(10))
+    ui.set_next_pref_height(s, ui.px(8))
+    ui.progress_bar(s, d.progress)
+    ui.spacer(s, ui.px(10))
+    if ui.row(s, ui.fill(), ui.px(30), "actions") {
+        if ui.clicked(ui.button(s, "Reset")) do demo_reset(d)
+        ui.spacer(s, ui.px(8))
+        if ui.disabled(s, !d.enabled || d.applying) {
+            apply := ui.button(s, "Apply")
+            if ui.clicked(apply) do d.applying = true
+        }
+        ui.spacer(s, ui.px(8))
+        inspector := ui.button(s, "Inspector window")
+        if ui.clicked(inspector) do d.show_inspector = !d.show_inspector
+        if ui.tooltip(s, inspector) do ui.label(s, "A floating, movable, resizable window")
+    }
+    ui.labelf(s, "Applied %d time%s", d.applied, d.applied == 1 ? "" : "s")
+}
+
+demo_windows :: proc(s: ^ui.State, d: ^Demo) {
+    inspector_pos := ui.Vec2{max(20, s.viewport.x - 340), 90}
+    if ui.window(s, "Inspector", {position = inspector_pos, size = {310, 230}}, &d.show_inspector) {
+        ui.labelf(s, "Material %02d", d.selected + 1)
+        ui.slider_n(s, "RGB", d.color[:], 0, 1)
+        ui.checkbox(s, "Enable material", &d.enabled)
+        ui.combo(s, "Quality", &d.quality, QUALITY[:])
+        if ui.clicked(ui.button(s, "Close")) do d.show_inspector = false
+    }
+
+    // The snippet from the C version, in Odin: @(static) locals and a scoped window.
+    if ui.window(s, "window 1", {position = {100, 100}, size = {330, 220}}, &d.show_window1) {
+        @(static) check := false
+        ui.checkbox(s, "Checkbox", &check)
+        @(static) choice := -1
+        ui.radio(s, "radio 0", &choice, 0)
+        ui.radio(s, "radio 1", &choice, 1)
+        ui.radio(s, "radio 2", &choice, 2)
+        @(static) rgba: [4]f32
+        ui.slider_n(s, "color", rgba[:], 0, 255, "%.0f")
+    }
+
+    if ui.window(s, "About", {position = {300, 200}, size = {340, 150}, options = {.No_Resize}}, &d.show_about) {
+        ui.label(s, "RAD-style box UI in Odin")
+        ui.label_weak(s, "Layout, signals and stacks after RAD Debugger (MIT)")
+        if ui.clicked(ui.button(s, "OK")) do d.show_about = false
     }
 }

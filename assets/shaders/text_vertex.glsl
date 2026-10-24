@@ -27,8 +27,11 @@ layout (location = 0) in vec3 position;
 layout (location = 1) in vec2 pen_offset; // glyph: em offset; box: top-left in pixels
 layout (location = 2) in vec2 curve_indicies; // glyph: curve range; box: dimensions in pixels
 layout (location = 3) in vec4 text_color; // rgb, font size in pixels (0 means box)
+// glyph: em-space placement. Column 2 never reaches the output (position.z is 0), so .x carries text alpha.
+// box: column 0 holds corner radii (top-left, top-right, bottom-right, bottom-left), column 1 border and softness
 layout (location = 4) in mat4 translation_matrix;
 // bands_loc[0..7] (horizontal), two bands packed per column: col c holds bands b=2c (.xy) and b=2c+1 (.zw)
+// box: one rgba color per corner, in the same order as the radii
 layout (location = 8)  in mat4 h_band_loc;
 // bands_loc[8..15] (vertical), same packing
 layout (location = 12) in mat4 v_band_loc;
@@ -38,28 +41,34 @@ flat out mat4 frag_h_band_loc;
 flat out mat4 frag_v_band_loc;
 flat out vec2 frag_glyph_min;
 flat out vec2 frag_glyph_max;
-flat out vec3 frag_color;
+flat out vec4 frag_color;
 flat out float frag_font_px;
 flat out vec2 frag_box_half_size;
-flat out vec2 frag_box_style; // radius and border width, in pixels
+flat out vec4 frag_box_radii; // per corner, in pixels
+flat out vec2 frag_box_style; // border width and edge softness, in pixels
 
 
 out vec2 frag_pos;
 
 void main()
 {
-    frag_color = text_color.rgb;
+    frag_color = vec4(text_color.rgb, translation_matrix[2].x);
     float font_px = text_color.a;
     frag_font_px = font_px;
     frag_box_half_size = vec2(0.0);
+    frag_box_radii = vec4(0.0);
     frag_box_style = vec2(0.0);
 
     if (font_px == 0.0)
     {
-        frag_box_style = translation_matrix[0].xy;
+        frag_box_radii = translation_matrix[0];
+        frag_box_style = translation_matrix[1].xy;
+        frag_h_band_loc = h_band_loc;
         frag_box_half_size = max(curve_indicies, vec2(0.0)) * 0.5;
-        // Centered box coordinates in pixels; expand the quad for edge antialiasing.
-        frag_pos = position.xy * (frag_box_half_size * 2.0 + vec2(1.0));
+        // Centered box coordinates in pixels. The quad grows by the softness (shadows fade outside the box)
+        // plus half a pixel on each side for edge antialiasing.
+        float grow = frag_box_style.y + 0.5;
+        frag_pos = position.xy * (frag_box_half_size * 2.0 + vec2(2.0 * grow));
         vec2 pixel_xy = pen_offset + frag_box_half_size + frag_pos;
         gl_Position = projection * view * model * vec4(pixel_xy, 0.0, 1.0);
         return;

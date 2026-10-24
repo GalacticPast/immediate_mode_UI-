@@ -2,181 +2,293 @@ package ui
 
 import "core:testing"
 
-fake_measure :: proc(text: string, size: f32) -> Vec2 { return {f32(len(text))*size*0.5, size} }
+// Every character is half the font size wide, one font size tall.
+fake_measure :: proc(text: string, size: f32) -> Vec2 { return {f32(len(text)) * size * 0.5, size} }
+
+DT :: 1.0 / 60.0
+
+click_events :: proc(p: Vec2, button := Mouse_Button.Left) -> [3]Event {
+    return {{kind = .Move, pos = p}, {kind = .Press, pos = p, button = button}, {kind = .Release, pos = p, button = button}}
+}
+center :: proc(b: ^Box) -> Vec2 { return b.rect.pos + b.rect.size * 0.5 }
 
 @(test)
-layout_span_and_fill :: proc(t: ^testing.T) {
+fill_shares_leftover_and_strict_sizes_survive :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    begin_build(&s, {500, 120}, nil, 0.016)
-    begin_container(&s, "row", .X, fill(), fill(), {}, 10)
-    column := begin_container(&s, "column", .Y, fill(), fill(), {}, 5)
-    for _ in 0 ..< 3 {
-        b := box(&s, "", {})
-        b.style.height = px(30)
+    begin_build(&s, {500, 100}, nil, DT)
+    row_begin(&s, fill(), px(40), "row")
+    set_next_pref_width(&s, px(100))
+    fixed := build_box(&s, {}, "fixed")
+    a := build_box(&s, {}, "a")
+    b := build_box(&s, {}, "b")
+    row_end(&s)
+    end_build(&s)
+    testing.expect_value(t, fixed.rect.size.x, f32(100))
+    testing.expect_value(t, a.rect.size.x, f32(200))
+    testing.expect_value(t, b.rect, Rect{{300, 0}, {200, 26}})
+}
+
+@(test)
+children_sum_and_text_sizes :: proc(t: ^testing.T) {
+    s: State
+    init(&s, fake_measure)
+    defer deinit(&s)
+    begin_build(&s, {400, 400}, nil, DT)
+    col := column_begin(&s, children_sum(), children_sum(), "col")
+    for name in ([]string{"x", "yy", "zzz"}) {
+        set_next_pref_size(&s, text_dim(), px(30))
+        build_box(&s, {.Draw_Text}, name)
     }
-    end_container(&s)
-    preview := color_preview(&s, "preview", {1, 0, 0}, px(100), fill())
-    end_container(&s)
+    column_end(&s)
     end_build(&s)
-    testing.expect_value(t, column.rect.size, Vec2{390, 120})
-    testing.expect_value(t, preview.rect, Rect{{400, 0}, {100, 120}})
-    testing.expect_value(t, column.last.rect.pos.y, f32(70))
+    // widest text: 3 chars * 7 px + 2 * 6 px text padding
+    testing.expect_value(t, col.rect.size, Vec2{33, 90})
+    testing.expect_value(t, col.last.rect.pos.y, f32(60))
 }
 
 @(test)
-weighted_fill_and_children_measure :: proc(t: ^testing.T) {
+set_next_applies_to_one_box :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    begin_build(&s, {400, 200}, nil, 0.016)
-    row := begin_container(&s, "row", .X, fill(), children(), {10, 5}, 10)
-    a := color_preview(&s, "a", {}, fill(1), px(40))
-    b := color_preview(&s, "b", {}, fill(2), px(30))
-    c := color_preview(&s, "c", {}, fill(1), px(20))
-    end_container(&s)
+    begin_build(&s, {300, 300}, nil, DT)
+    set_next_pref_height(&s, px(50))
+    set_next_palette(&s, s.theme.tooltip)
+    first := build_box(&s, {}, "first")
+    second := build_box(&s, {}, "second")
     end_build(&s)
-    testing.expect_value(t, row.rect.size.y, f32(50))
-    testing.expect_value(t, a.rect.size.x, f32(90))
-    testing.expect_value(t, b.rect.size.x, f32(180))
-    testing.expect_value(t, c.rect.pos.x, f32(300))
+    testing.expect_value(t, first.rect.size.y, f32(50))
+    testing.expect_value(t, second.rect.size.y, s.theme.row_height)
+    testing.expect_value(t, first.palette, s.theme.tooltip)
+    testing.expect_value(t, second.palette, s.theme.base)
 }
 
 @(test)
-key_identity_pruning_and_owned_text :: proc(t: ^testing.T) {
+keys_survive_relabeling_and_duplicates_turn_transient :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    begin_build(&s, {200, 100}, nil, 0.016)
-    text_bytes := [3]u8{'O', 'n', 'e'}
-    b := box(&s, "One###stable", {.Text})
-    set_text(&s, b, string(text_bytes[:]))
-    text_bytes[0] = 'X'
-    key := b.key
+    begin_build(&s, {200, 100}, nil, DT)
+    one := build_box(&s, {.Draw_Text}, "One###stable")
+    dup := build_box(&s, {}, "Two###stable")
     end_build(&s)
-    testing.expect_value(t, b.text, "One")
-    begin_build(&s, {200, 100}, nil, 0.016)
-    again := box(&s, "Two###stable", {.Text})
-    testing.expect_value(t, again, b)
-    testing.expect_value(t, again.key, key)
-    testing.expect_value(t, again.text, "Two")
-    end_build(&s)
-    s.active, s.focus = key, key
-    begin_build(&s, {200, 100}, nil, 0.016)
-    end_build(&s)
-    testing.expect(t, s.cache[key] == nil)
-    testing.expect_value(t, s.active, Key(0))
-    testing.expect_value(t, s.focus, Key(0))
-    testing.expect_value(t, len(s.boxes), 1) // root only
-}
+    testing.expect_value(t, one.text, "One")
+    testing.expect(t, one.key != 0)
+    testing.expect_value(t, dup.key, Key(0))
 
-build_button_fixture :: proc(s: ^State) -> ^Box {
-    b := box(s, "button", {.Clickable, .Text})
-    b.style.width, b.style.height = px(100), px(30)
-    return b
+    begin_build(&s, {200, 100}, nil, DT)
+    again := build_box(&s, {.Draw_Text}, "Three###stable")
+    end_build(&s)
+    testing.expect(t, again == one, "the same key reuses the same box")
+    testing.expect_value(t, again.text, "Three")
 }
 
 @(test)
-click_batch_capture_and_focus :: proc(t: ^testing.T) {
+click_routes_through_the_previous_layout :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    begin_build(&s, {200, 100}, nil, 0.016)
-    build_button_fixture(&s)
+    begin_build(&s, {300, 200}, nil, DT)
+    b := button(&s, "go").box
     end_build(&s)
-    events := []Event{{kind = .Press, pos = {10, 10}}, {kind = .Release, pos = {10, 10}}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    b := build_button_fixture(&s)
-    testing.expect(t, b.signal.pressed && b.signal.released && b.signal.clicked)
-    testing.expect_value(t, s.focus, b.key)
+
+    events := click_events(center(b))
+    begin_build(&s, {300, 200}, events[:], DT)
+    sig := button(&s, "go")
     end_build(&s)
-    events = []Event{{kind = .Press, pos = {10, 10}}, {kind = .Move, pos = {190, 80}}, {kind = .Release, pos = {190, 80}}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    b = build_button_fixture(&s)
-    testing.expect(t, b.signal.released && !b.signal.clicked)
-    testing.expect_value(t, b.signal.drag_pos, Vec2{190, 80})
+    testing.expect(t, clicked(sig))
+    testing.expect(t, .Left_Pressed in sig.flags && .Left_Released in sig.flags)
+
+    // pressing then releasing elsewhere is not a click
+    begin_build(&s, {300, 200}, []Event{{kind = .Press, pos = center(b)}, {kind = .Release, pos = {299, 199}}}, DT)
+    sig = button(&s, "go")
     end_build(&s)
-    events = []Event{{kind = .Key_Press, key = .Enter}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    b = build_button_fixture(&s)
-    testing.expect(t, b.signal.clicked)
-    end_build(&s)
+    testing.expect(t, released(sig) && !clicked(sig))
 }
 
 @(test)
-slider_mouse_keyboard_and_disabled :: proc(t: ^testing.T) {
+windows_occlude_the_main_ui :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    value: f32
-    begin_build(&s, {200, 100}, nil, 0.016)
-    slider(&s, "gain", &value, 0, 1)
-    end_build(&s)
-    events := []Event{{kind = .Press, pos = {100, 10}}, {kind = .Release, pos = {100, 10}}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    slider(&s, "gain", &value, 0, 1)
-    end_build(&s)
-    testing.expect_value(t, value, f32(0.5))
-    events = []Event{{kind = .Key_Press, key = .End}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    slider(&s, "gain", &value, 0, 1)
-    end_build(&s)
-    testing.expect_value(t, value, f32(1))
-    events = []Event{{kind = .Key_Press, key = .Enter}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    sig := button(&s, "gain", true)
-    testing.expect(t, !sig.clicked)
-    end_build(&s)
-    testing.expect_value(t, s.focus, Key(0))
-}
-
-build_scroll_fixture :: proc(s: ^State, overlay: bool) -> ^Box {
-    panel := begin_container(s, "scroll", .Y, fill(), fill(), {}, 0, {.Scroll, .Clip})
-    for _ in 0 ..< 10 {
-        b := box(s, "", {.Background})
-        b.style.height = px(30)
+    build :: proc(s: ^State, events: []Event) -> (under, over: Signal) {
+        begin_build(s, {400, 300}, events, DT)
+        under = button(s, "under")
+        if window(s, "win", {position = {0, 0}, size = {200, 200}, options = {.No_Title_Bar}}) {
+            over = button(s, "over")
+        }
+        end_build(s)
+        return
     }
-    end_container(s)
-    if overlay {
-        b := box(s, "overlay", {.Floating, .Clickable, .Background})
-        b.style.width, b.style.height = px(200), px(100)
+    _, over := build(&s, nil)
+    events := click_events(center(over.box))
+    under, over2 := build(&s, events[:])
+    testing.expect(t, clicked(over2), "the button in the window gets the click")
+    testing.expect(t, !clicked(under), "the button beneath the window does not")
+}
+
+@(test)
+scrolling_is_clamped_to_the_content :: proc(t: ^testing.T) {
+    s: State
+    init(&s, fake_measure)
+    defer deinit(&s)
+    build :: proc(s: ^State, events: []Event) {
+        begin_build(s, {200, 100}, events, DT)
+        if scroll_region(s, "list") {
+            for i in 0 ..< 10 {
+                set_next_pref_height(s, px(30))
+                build_box(s, {.Draw_Background}, fmt_index(i))
+            }
+        }
+        end_build(s)
     }
-    return panel
+    build(&s, nil)
+    build(&s, nil)
+    view := box_from_key(&s, key_from_string(key_from_string(key_from_string(key_from_string(0, "###root"), "list"), "###row"), "###view"))
+    testing.expect(t, view != nil)
+    if view == nil do return
+    testing.expect_value(t, view.view_bounds.y, f32(300))
+    build(&s, []Event{{kind = .Scroll, pos = {50, 50}, scroll = {0, 1000}}})
+    testing.expect_value(t, view.view_off_target.y, f32(200))
+}
+
+@(private = "file")
+fmt_index :: proc(i: int) -> string {
+    names := [?]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+    return names[i]
 }
 
 @(test)
-scroll_clipping_and_overlay_occlusion :: proc(t: ^testing.T) {
-    s: State
-    init(&s, fake_measure)
-    defer deinit(&s)
-    begin_build(&s, {200, 100}, nil, 0.016)
-    build_scroll_fixture(&s, false)
-    end_build(&s)
-    events := []Event{{kind = .Scroll, pos = {20, 20}, scroll = 60}}
-    begin_build(&s, {200, 100}, events, 0.016)
-    panel := build_scroll_fixture(&s, true)
-    end_build(&s)
-    testing.expect_value(t, panel.scroll_y, f32(60))
-    testing.expect_value(t, panel.first.rect.pos.y, f32(-60))
-    testing.expect_value(t, panel.first.clip.size.y, f32(0))
-    begin_build(&s, {200, 100}, events, 0.016)
-    panel = build_scroll_fixture(&s, true)
-    end_build(&s)
-    testing.expect_value(t, panel.scroll_y, f32(60))
+text_ops :: proc(t: ^testing.T) {
+    buffer: [8]u8
+    length := 0
+    type :: proc(text: string, cursor, mark: int, e: Event, buffer: []u8, length: ^int) -> (int, int) {
+        op, ok := text_op_from_event(text, cursor, mark, e)
+        assert(ok)
+        insert := ""
+        bytes: [1]u8
+        if op.insert_rune != 0 {
+            bytes[0] = u8(op.insert_rune)
+            insert = string(bytes[:])
+        }
+        if !op.edits do return op.cursor, op.mark
+        end := text_op_apply(op, insert, buffer, length)
+        return end, end
+    }
+    cursor, mark := 0, 0
+    for c in "hello wo" {
+        cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Text, text = c}, buffer[:], &length)
+    }
+    testing.expect_value(t, string(buffer[:length]), "hello wo")
+    // full buffer: the extra character is dropped
+    cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Text, text = 'r'}, buffer[:], &length)
+    testing.expect_value(t, string(buffer[:length]), "hello wo")
+    cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Key_Press, key = .Backspace, mods = {.Ctrl}}, buffer[:], &length)
+    testing.expect_value(t, string(buffer[:length]), "hello ")
+    // select everything and type over it
+    cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Key_Press, key = .A, mods = {.Ctrl}}, buffer[:], &length)
+    testing.expect_value(t, [2]int{mark, cursor}, [2]int{0, 6})
+    cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Text, text = 'X'}, buffer[:], &length)
+    testing.expect_value(t, string(buffer[:length]), "X")
+    cursor, mark = type(string(buffer[:length]), cursor, mark, {kind = .Key_Press, key = .Home, mods = {.Shift}}, buffer[:], &length)
+    testing.expect_value(t, [2]int{cursor, mark}, [2]int{0, 1})
 }
 
 @(test)
-shrinking_obeys_strictness :: proc(t: ^testing.T) {
+line_edit_types_and_commits :: proc(t: ^testing.T) {
     s: State
     init(&s, fake_measure)
     defer deinit(&s)
-    begin_build(&s, {100, 50}, nil, 0.016)
-    begin_container(&s, "row", .X, fill(), fill(), {}, 0)
-    a := color_preview(&s, "a", {}, px(80, 1), fill())
-    b := color_preview(&s, "b", {}, px(80, 0), fill())
-    end_container(&s)
+    buffer: [32]u8
+    length := 0
+    begin_build(&s, {300, 100}, nil, DT)
+    b := line_edit(&s, "name", buffer[:], &length).box
     end_build(&s)
-    testing.expect_value(t, a.rect.size.x, f32(80))
-    testing.expect_value(t, b.rect.size.x, f32(20))
+
+    events := click_events(center(b))
+    begin_build(&s, {300, 100}, events[:], DT)
+    line_edit(&s, "name", buffer[:], &length)
+    end_build(&s)
+    testing.expect_value(t, s.focus_active, b.key)
+
+    typing := []Event{{kind = .Text, text = 'h'}, {kind = .Text, text = 'i'}, {kind = .Key_Press, key = .Enter}}
+    begin_build(&s, {300, 100}, typing, DT)
+    sig := line_edit(&s, "name", buffer[:], &length)
+    end_build(&s)
+    testing.expect_value(t, string(buffer[:length]), "hi")
+    testing.expect(t, committed(sig))
+    testing.expect_value(t, s.focus_active, Key(0))
+}
+
+@(test)
+ctx_menu_closes_on_outside_press_and_escape :: proc(t: ^testing.T) {
+    s: State
+    init(&s, fake_measure)
+    defer deinit(&s)
+    key := key_from_string(0, "menu")
+    build :: proc(s: ^State, key: Key, events: []Event) -> (item: Signal) {
+        begin_build(s, {400, 400}, events, DT)
+        if ctx_menu(s, key) do item = menu_item(s, "Copy")
+        end_build(s)
+        return
+    }
+    begin_build(&s, {400, 400}, nil, DT)
+    ctx_menu_open(&s, key, 0, {10, 10})
+    end_build(&s)
+    item := build(&s, key, nil)
+    testing.expect(t, item.box != nil, "an open menu is built")
+    testing.expect(t, item.box.rect.pos.x >= 10)
+
+    build(&s, key, []Event{{kind = .Press, pos = {390, 390}}})
+    testing.expect(t, !ctx_menu_is_open(&s, key), "pressing outside closes it")
+
+    ctx_menu_open(&s, key)
+    build(&s, key, nil)
+    build(&s, key, []Event{{kind = .Key_Press, key = .Escape}})
+    testing.expect(t, !ctx_menu_is_open(&s, key), "escape closes it")
+}
+
+@(test)
+tooltip_waits_for_the_pointer_to_rest :: proc(t: ^testing.T) {
+    s: State
+    init(&s, fake_measure)
+    defer deinit(&s)
+    build :: proc(s: ^State, events: []Event) -> (shown: bool, b: ^Box) {
+        begin_build(s, {300, 300}, events, 0.1)
+        sig := button(s, "hover me")
+        if tooltip(s, sig) {
+            label(s, "tip")
+            shown = true
+        }
+        end_build(s)
+        return shown, sig.box
+    }
+    _, b := build(&s, nil)
+    shown: bool
+    shown, _ = build(&s, []Event{{kind = .Move, pos = center(b)}})
+    testing.expect(t, !shown, "not right away")
+    for _ in 0 ..< 6 do shown, _ = build(&s, nil)
+    testing.expect(t, shown, "after the delay")
+    testing.expect(t, s.tooltip_root.first != nil && s.tooltip_root.first.rect.size.x > 0)
+}
+
+@(test)
+disabled_scope_blocks_input :: proc(t: ^testing.T) {
+    s: State
+    init(&s, fake_measure)
+    defer deinit(&s)
+    build :: proc(s: ^State, events: []Event) -> Signal {
+        begin_build(s, {300, 100}, events, DT)
+        sig: Signal
+        if disabled(s) do sig = button(s, "off")
+        end_build(s)
+        return sig
+    }
+    sig := build(&s, nil)
+    events := click_events(center(sig.box))
+    sig = build(&s, events[:])
+    testing.expect(t, .Disabled in sig.box.flags)
+    testing.expect(t, !clicked(sig))
 }

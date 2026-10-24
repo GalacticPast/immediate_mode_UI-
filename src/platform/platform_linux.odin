@@ -33,6 +33,14 @@ Platform_Linux_State :: struct {
     wp_viewport:                 ^wl.wp_viewport,
     cursor_manager:              ^wl.wp_cursor_shape_manager_v1,
     cursor_device:               ^wl.wp_cursor_shape_device_v1,
+    cursor:                      Cursor,
+    pointer_serial:              u32,
+    mods:                        Modifiers,
+    // client side key repeat: wl_keyboard only reports the rate, the client generates the repeats
+    repeat_rate:                 i32, // repeats per second, 0 disables
+    repeat_delay:                i32, // milliseconds before the first repeat
+    repeat_key:                  u32, // xkb keycode being repeated, 0 for none
+    repeat_next:                 time.Tick,
 
     // window specific
     egl_context:                 egl.Context,
@@ -80,38 +88,66 @@ k_listener: wl.keyboard_listener = {
     },
     enter = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface, keys: ^wl.array) {  },
     leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {
+        p_l_state.repeat_key = 0
+        p_l_state.mods = {}
         emit_pointer_event({type = .INPUT_CANCEL})
     },
-    key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, time, key, state: u32) {
-        // I have no idea why I need to add 8 but the docs say so I guess
+    key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, time_ms, key, state: u32) {
+        // evdev codes are offset by 8 from xkb keycodes
         // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
-        ctx := p_state.t_context
-        if ctx == nil {
-            return
-        }
-        // set the context
-        context = ctx^
-
         keycode := key + 8
-        sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
-        //@info: incomplete
-        k_type := translate_key_code(sym)
-        e := new(Event)
-        e.key = k_type
-
         switch state {
             case 0:
-                e.type = .KEY_RELEASE
-            // idk how to do key repeats for now
-            case 1, 2:
-                e.type = .KEY_PRESS
-            case:
-                e.type = .NONE
+                if p_l_state.repeat_key == keycode do p_l_state.repeat_key = 0
+                emit_key(keycode, .KEY_RELEASE)
+            case 1:
+                emit_key(keycode, .KEY_PRESS)
+                if p_l_state.repeat_rate > 0 && p_l_state.xkb_keymap != nil &&
+                   wl.xkb_keymap_key_repeats(p_l_state.xkb_keymap, keycode) != 0 {
+                    p_l_state.repeat_key = keycode
+                    p_l_state.repeat_next = time.tick_add(time.tick_now(), time.Duration(p_l_state.repeat_delay) * time.Millisecond)
+                }
+            case 2:
+                // wl_keyboard v10: the compositor repeats for us
+                emit_key(keycode, .KEY_REPEAT)
         }
-        push_event(e)
     },
-    modifiers = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, depressed, latched, locked, group: u32) {  },
-    repeat_info = proc "c" (data: rawptr, keyboard: ^wl.keyboard, rate, delay: i32) {  },
+    modifiers = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, depressed, latched, locked, group: u32) {
+        st := p_l_state.xkb_state
+        if st == nil do return
+        // without this, keysyms and text ignore shift and the layout group
+        wl.xkb_state_update_mask(st, depressed, latched, locked, 0, 0, group)
+        mods: Modifiers
+        if wl.xkb_state_mod_name_is_active(st, wl.XKB_MOD_NAME_SHIFT, wl.XKB_STATE_MODS_EFFECTIVE) > 0 do mods += {.Shift}
+        if wl.xkb_state_mod_name_is_active(st, wl.XKB_MOD_NAME_CTRL, wl.XKB_STATE_MODS_EFFECTIVE) > 0 do mods += {.Ctrl}
+        if wl.xkb_state_mod_name_is_active(st, wl.XKB_MOD_NAME_ALT, wl.XKB_STATE_MODS_EFFECTIVE) > 0 do mods += {.Alt}
+        p_l_state.mods = mods
+    },
+    repeat_info = proc "c" (data: rawptr, keyboard: ^wl.keyboard, rate, delay: i32) {
+        p_l_state.repeat_rate = max(rate, 0)
+        p_l_state.repeat_delay = max(delay, 0)
+        if rate <= 0 do p_l_state.repeat_key = 0
+    },
+}
+
+// Pushes the key event and, for presses and repeats, the text it types.
+emit_key :: proc "contextless" (keycode: u32, type: Event_Type) {
+    if p_state.t_context == nil || p_l_state.xkb_state == nil do return
+    context = p_state.t_context^
+
+    sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
+    e := new(Event)
+    e^ = {type = type, key = translate_key_code(sym), mods = p_l_state.mods}
+    push_event(e)
+
+    // ctrl/alt combinations are shortcuts, not text
+    if type == .KEY_RELEASE || .Ctrl in p_l_state.mods || .Alt in p_l_state.mods do return
+    codepoint := wl.xkb_state_key_get_utf32(p_l_state.xkb_state, keycode)
+    if codepoint >= 32 && codepoint != 127 {
+        t := new(Event)
+        t^ = {type = .TEXT_INPUT, text = rune(codepoint), mods = p_l_state.mods}
+        push_event(t)
+    }
 }
 
 // Events up to version 10. Which ones arrive depends on the seat version we bind.
@@ -120,7 +156,10 @@ p_listener: wl.pointer_listener = {
         if p_l_state.cursor_device == nil && p_l_state.cursor_manager != nil {
             p_l_state.cursor_device = wl.wp_cursor_shape_manager_v1_get_pointer(p_l_state.cursor_manager, pointer)
         }
-        if p_l_state.cursor_device != nil do wl.wp_cursor_shape_device_v1_set_shape(p_l_state.cursor_device, serial, 1)
+        p_l_state.pointer_serial = serial
+        if p_l_state.cursor_device != nil {
+            wl.wp_cursor_shape_device_v1_set_shape(p_l_state.cursor_device, serial, cursor_shape(p_l_state.cursor))
+        }
         p_l_state.pointer_pos = {i32(wl.fixed_to_f32(x)), i32(wl.fixed_to_f32(y))}
         emit_pointer_event({type = .MOUSE_MOVE, pos = p_l_state.pointer_pos})
     },
@@ -142,8 +181,12 @@ p_listener: wl.pointer_listener = {
         emit_pointer_event({type = state == 0 ? .MOUSE_RELEASE : .MOUSE_PRESS, button = b, pos = p_l_state.pointer_pos})
     },
     axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {
-        if axis == wl.POINTER_AXIS_VERTICAL_SCROLL {
-            emit_pointer_event({type = .MOUSE_SCROLL, pos = p_l_state.pointer_pos, scroll = wl.fixed_to_f32(value)*3})
+        delta := wl.fixed_to_f32(value) * 3
+        switch axis {
+            case wl.POINTER_AXIS_VERTICAL_SCROLL:
+                emit_pointer_event({type = .MOUSE_SCROLL, pos = p_l_state.pointer_pos, scroll = {0, delta}})
+            case wl.POINTER_AXIS_HORIZONTAL_SCROLL:
+                emit_pointer_event({type = .MOUSE_SCROLL, pos = p_l_state.pointer_pos, scroll = {delta, 0}})
         }
     },
     frame = proc "c" (data: rawptr, pointer: ^wl.pointer) {  },                                             // v5
@@ -160,7 +203,31 @@ emit_pointer_event :: proc "contextless" (event: Event) {
     context = p_state.t_context^
     e := new(Event)
     e^ = event
+    e.mods = p_l_state.mods
     push_event(e)
+}
+
+// wp_cursor_shape_device_v1.shape values
+cursor_shape :: proc "contextless" (c: Cursor) -> u32 {
+    switch c {
+        case .Default: return 1
+        case .Pointer: return 4
+        case .Text: return 9
+        case .Move: return 13
+        case .Not_Allowed: return 15
+        case .Resize_EW: return 26
+        case .Resize_NS: return 27
+        case .Resize_NWSE: return 29
+    }
+    return 1
+}
+
+set_cursor :: proc(c: Cursor) {
+    if c == p_l_state.cursor do return
+    p_l_state.cursor = c
+    if p_l_state.cursor_device != nil {
+        wl.wp_cursor_shape_device_v1_set_shape(p_l_state.cursor_device, p_l_state.pointer_serial, cursor_shape(c))
+    }
 }
 
 x_base_listener: wl.xdg_wm_base_listener = {
@@ -520,7 +587,12 @@ dispatch :: proc() -> bool {
     raw_fd: linux.Fd = cast(linux.Fd)wl.display_get_fd(p_l_state.display)
     fds := []linux.Poll_Fd{{fd = raw_fd, events = {.IN}}}
 
-    ready, err := linux.poll(fds, poll_timeout_ms(p_l_state.deadline))
+    // wake up for the next key repeat even if nothing else is due
+    wake := p_l_state.deadline
+    if p_l_state.repeat_key != 0 && (wake == {} || time.tick_diff(p_l_state.repeat_next, wake) > 0) {
+        wake = p_l_state.repeat_next
+    }
+    ready, err := linux.poll(fds, poll_timeout_ms(wake))
     if err != .NONE && err != .EINTR {
         fmt.eprintln("Linux poll failed ", err)
         wl.display_cancel_read(p_l_state.display)
@@ -538,7 +610,20 @@ dispatch :: proc() -> bool {
     }
 
     result = wl.display_dispatch_pending(p_l_state.display)
+    emit_key_repeats()
     return result == -1 ? false : true
+}
+
+emit_key_repeats :: proc() {
+    if p_l_state.repeat_key == 0 || p_l_state.repeat_rate <= 0 do return
+    now := time.tick_now()
+    interval := time.Second / time.Duration(p_l_state.repeat_rate)
+    // after a long stall only a few repeats are generated, not a burst for the whole gap
+    for n := 0; n < 4 && time.tick_diff(p_l_state.repeat_next, now) >= 0; n += 1 {
+        emit_key(p_l_state.repeat_key, .KEY_REPEAT)
+        p_l_state.repeat_next = time.tick_add(p_l_state.repeat_next, interval)
+    }
+    if time.tick_diff(p_l_state.repeat_next, now) >= 0 do p_l_state.repeat_next = time.tick_add(now, interval)
 }
 
 request_deadline :: proc(deadline: time.Tick) {
@@ -565,8 +650,20 @@ get_window_size :: proc() -> (i32, i32) {
 
 
 translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
+    // letters keep one key whether or not shift changed the keysym's case
+    if xkb_key >= 'a' && xkb_key <= 'z' do return Key_Type(xkb_key - 'a' + 'A')
+    if xkb_key >= 'A' && xkb_key <= 'Z' do return Key_Type(xkb_key)
+    // XKB_KEY_F1 .. XKB_KEY_F12 are consecutive
+    if xkb_key >= 0xffbe && xkb_key <= 0xffc9 do return Key_Type(u32(Key_Type.F1) + xkb_key - 0xffbe)
     switch (xkb_key) {
-        case wl.XKB_KEY_Tab: return .TAB
+        case wl.XKB_KEY_Tab, wl.XKB_KEY_ISO_Left_Tab: return .TAB
+        case wl.XKB_KEY_BackSpace: return .BACKSPACE
+        case wl.XKB_KEY_Delete: return .DELETE
+        case wl.XKB_KEY_Home: return .HOME
+        case wl.XKB_KEY_End: return .END
+        case wl.XKB_KEY_Page_Up: return .PRIOR
+        case wl.XKB_KEY_Page_Down: return .NEXT
+        case wl.XKB_KEY_KP_Enter: return .ENTER
         case wl.XKB_KEY_Return: return .ENTER
         case wl.XKB_KEY_Escape:
             return .ESCAPE
