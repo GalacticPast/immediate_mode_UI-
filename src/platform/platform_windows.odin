@@ -19,15 +19,15 @@ Platform_Windows_State :: struct {
     height:         i32,
     display_scale:  f32,
     deadline:       time.Tick,
+    mouse_down:     bool,
 }
 @(private = "file")
 p_w_state: Platform_Windows_State
 
 @(private = "file")
 WINDOW_CLASS_NAME :: "imgui_odin"
-// fixed size window, same as min size == max size on wayland
 @(private = "file")
-WINDOW_STYLE :: win.WS_OVERLAPPEDWINDOW & ~(win.WS_THICKFRAME | win.WS_MAXIMIZEBOX)
+WINDOW_STYLE :: win.WS_OVERLAPPEDWINDOW
 
 // Windows calls this from inside PeekMessage / DispatchMessage, which only happen in dispatch(),
 // so get_events has already stashed its context. CreateWindow and SetWindowPos in startup also
@@ -50,6 +50,41 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             return 0
         case win.WM_DESTROY:
             win.PostQuitMessage(0)
+            return 0
+        case win.WM_KILLFOCUS, win.WM_CANCELMODE:
+            p_w_state.mouse_down = false
+            push_window_event({type = .INPUT_CANCEL})
+            win.ReleaseCapture()
+            return 0
+        case win.WM_CAPTURECHANGED:
+            if p_w_state.mouse_down {
+                p_w_state.mouse_down = false
+                push_window_event({type = .INPUT_CANCEL})
+            }
+            return 0
+        case win.WM_MOUSELEAVE:
+            push_window_event({type = .MOUSE_LEAVE})
+            return 0
+        case win.WM_LBUTTONDOWN, win.WM_LBUTTONUP:
+            pos := Vector2{i32(f32(win.GET_X_LPARAM(l_param))/p_w_state.display_scale),
+                           i32(f32(win.GET_Y_LPARAM(l_param))/p_w_state.display_scale)}
+            if msg == win.WM_LBUTTONDOWN {
+                p_w_state.mouse_down = true
+                win.SetCapture(hwnd)
+                push_window_event({type = .MOUSE_PRESS, pos = pos, button = .Left})
+            } else {
+                p_w_state.mouse_down = false
+                push_window_event({type = .MOUSE_RELEASE, pos = pos, button = .Left})
+                win.ReleaseCapture()
+            }
+            return 0
+        case win.WM_MOUSEWHEEL:
+            point := win.POINT{win.GET_X_LPARAM(l_param), win.GET_Y_LPARAM(l_param)}
+            win.ScreenToClient(hwnd, &point)
+            delta := i16(win.HIWORD(w_param))
+            push_window_event({type = .MOUSE_SCROLL,
+                pos = {i32(f32(point.x)/p_w_state.display_scale), i32(f32(point.y)/p_w_state.display_scale)},
+                scroll = -f32(delta)/120*48})
             return 0
         case win.WM_SIZE:
             if w_param == win.SIZE_MINIMIZED {
@@ -91,6 +126,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             }
             push_window_event(e)
         case win.WM_MOUSEMOVE:
+            tracking := win.TRACKMOUSEEVENT{cbSize = size_of(win.TRACKMOUSEEVENT), dwFlags = win.TME_LEAVE, hwndTrack = hwnd}
+            win.TrackMouseEvent(&tracking)
             push_window_event(
                 {
                     type = .MOUSE_MOVE,
@@ -147,7 +184,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
     p_w_state.hwnd = win.CreateWindowExW(
         0,
         win.L(WINDOW_CLASS_NAME),
-        win.L("odin odin odin"),
+        win.L("Odin UI - box laboratory"),
         WINDOW_STYLE,
         win.CW_USEDEFAULT,
         win.CW_USEDEFAULT,

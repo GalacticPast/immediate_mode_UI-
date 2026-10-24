@@ -32,6 +32,7 @@ flat in mat4 frag_v_band_loc;
 flat in vec3 frag_color;
 flat in float frag_font_px;
 flat in vec2 frag_box_half_size;
+flat in vec2 frag_box_style;
 
 // Paper Table 1: 16-bit lookup. For input code i, bit 2i is the t1 contribution and bit 2i+1 the t2 contribution.
 #define CONTRIBUTION_TABLE 0x2E74
@@ -194,11 +195,13 @@ void main()
             discard;
 
         // Rounded-box SDF in physical pixels. Clamp the radius for very small boxes.
-        float radius = min(1.0, min(frag_box_half_size.x, frag_box_half_size.y));
+        float radius = clamp(frag_box_style.x, 0.0, min(frag_box_half_size.x, frag_box_half_size.y));
         vec2 q = abs(frag_pos) - frag_box_half_size + vec2(radius);
         float distance_px = length(max(q, vec2(0.0)))
                           + min(max(q.x, q.y), 0.0) - radius;
         float alpha = clamp(0.5 - distance_px, 0.0, 1.0);
+        if (frag_box_style.y > 0.0)
+            alpha *= clamp(distance_px + frag_box_style.y + 0.5, 0.0, 1.0);
         if (alpha <= 0.0)
             discard;
 

@@ -1,84 +1,79 @@
 package main
+
 import "core:fmt"
 import "core:os"
-import "text"
-import gl "vendor:OpenGL"
-
-
+import "core:time"
 import pl "platform"
 import r "renderer"
+import "text"
+import "ui"
+import gl "vendor:OpenGL"
 
-// this feels so weird
-// comming from 'C' land where I literally had to write everything by hand
-// well I wrote everything :)
+UI_SMOKE_TEST :: #config(UI_SMOKE_TEST, false)
+
 main :: proc() {
-    // the binary lives in bin/, assets/ is next to it. Run from the project root so
-    // relative asset paths work no matter where the app is launched from
     exe_dir, err := os.get_executable_directory(context.temp_allocator)
     if err == nil {
         os.set_working_directory(os.dir(exe_dir))
     } else {
-        fmt.eprintln("couldnt find the executable directory:", err)
+        fmt.eprintln("Could not find the executable directory:", err)
     }
-
-    if !pl.startup(600, 400) {
-        return
-    }
-
-    // the text shader outputs coverage as alpha
+    if !pl.startup(1060, 760) do return
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-
-    f_w, f_h := pl.get_framebuffer_size()
-    gl.Viewport(0, 0, f_w, f_h)
-
     text.init()
     defer text.deinit()
     glyphs := text.load_font("assets/font/Archivo-Regular.ttf")
     r.init()
     defer r.deinit()
     r.upload_to_gpu(glyphs)
-
-    run := true
-    //position: [2]f32 = {20 * display_scale, 20 * display_scale}
-    position: [2]f32 = {0, 0}
-    color: [3]f32 = {1, 1, 1}
-    font_size: f32 = 12
-    wrap_width: f32 = 0.0
-
-    for run {
-        list := pl.get_events()
-        e := list.head
-        for e != nil {
-            eat: ^pl.Event
-            #partial switch e.type {
-                case .WINDOW_CLOSE:
-                    run = false
-                    eat = e
-                case .KEY_RELEASE:
-                    if e.key == .ESCAPE {
-                        run = false
-                    }
-                    eat = e
-            }
-            e = e.next
-            if eat != nil {
-                pl.eat_event(&list, eat)
-            }
-        }
-        // draw
-        gl.ClearColor(0, 0, 0, 1)
-        gl.Clear(gl.COLOR_BUFFER_BIT)
-
-        r.start_command()
-        r.push({{100, 100}, {65, 65}}, {0, 0, 0.4})
-        r.push("Havavavavavafads;lkfjasdihadkgaskdjgh8oiurijeagndbmn", position, color, font_size, wrap_width)
-        r.end_command()
-
-        r.render()
-
-        pl.swap_buffers()
-        free_all(context.temp_allocator)
+    state: ui.State
+    ui.init(&state, r.calculate_size)
+    defer ui.deinit(&state)
+    demo := Demo {
+        color         = {0.27, 0.55, 0.86},
+        sidebar_width = 230,
+        enabled       = true,
+        scene_open    = true,
     }
-
+    shift_down: bool
+    previous := time.tick_now()
+    frame_index := 0
+    pl.request_deadline(previous)
+    for {
+        events := pl.get_events()
+        quit := false
+        for e := events.head; e != nil; e = e.next {
+            if e.type == .WINDOW_CLOSE do quit = true
+            if e.type == .KEY_PRESS && e.key == .ESCAPE do demo.show_help = false
+        }
+        if quit do break
+        now := time.tick_now()
+        dt := f32(time.tick_diff(previous, now)) / f32(time.Second)
+        previous = now
+        width, height := pl.get_window_size()
+        inputs := ui_events(events, &shift_down)
+        when UI_SMOKE_TEST {
+            smoke_before_build(&state, &demo, frame_index, &inputs)
+        }
+        ui.begin_build(&state, {f32(width), f32(height)}, inputs[:], dt)
+        demo_build(&state, &demo)
+        ui.end_build(&state)
+        gl.ClearColor(0.075, 0.085, 0.105, 1)
+        gl.Clear(gl.COLOR_BUFFER_BIT)
+        ui_render(state.commands[:])
+        when UI_SMOKE_TEST {
+            smoke_capture(frame_index)
+        }
+        pl.swap_buffers()
+        // Poll while animating; otherwise the UI sleeps until an input/resize event.
+        if state.animating || state.active != 0 || UI_SMOKE_TEST {
+            pl.request_deadline(time.tick_add(time.tick_now(), 16 * time.Millisecond))
+        }
+        free_all(context.temp_allocator)
+        frame_index += 1
+        when UI_SMOKE_TEST {
+            if frame_index == 7 do break
+        }
+    }
 }

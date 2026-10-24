@@ -26,10 +26,13 @@ Platform_Linux_State :: struct {
     xkb_keymap:                  ^wl.xkb_keymap,
     keyboard:                    ^wl.keyboard,
     pointer:                     ^wl.pointer,
+    pointer_pos:                 Vector2,
     wp_viewporter:               ^wl.wp_viewporter,
     wp_fractional_scale_manager: ^wl.wp_fractional_scale_manager_v1,
     wp_fractional_scale:         ^wl.wp_fractional_scale_v1,
     wp_viewport:                 ^wl.wp_viewport,
+    cursor_manager:              ^wl.wp_cursor_shape_manager_v1,
+    cursor_device:               ^wl.wp_cursor_shape_device_v1,
 
     // window specific
     egl_context:                 egl.Context,
@@ -76,7 +79,9 @@ k_listener: wl.keyboard_listener = {
         p_l_state.xkb_state = x_state
     },
     enter = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface, keys: ^wl.array) {  },
-    leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {  },
+    leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {
+        emit_pointer_event({type = .INPUT_CANCEL})
+    },
     key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, time, key, state: u32) {
         // I have no idea why I need to add 8 but the docs say so I guess
         // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
@@ -111,11 +116,36 @@ k_listener: wl.keyboard_listener = {
 
 // Events up to version 10. Which ones arrive depends on the seat version we bind.
 p_listener: wl.pointer_listener = {
-    enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {  },
-    leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {  },
-    motion = proc "c" (data: rawptr, pointer: ^wl.pointer, time: u32, x, y: wl.fixed) {  },
-    button = proc "c" (data: rawptr, pointer: ^wl.pointer, serial, time, button, state: u32) {  },
-    axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {  },
+    enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {
+        if p_l_state.cursor_device == nil && p_l_state.cursor_manager != nil {
+            p_l_state.cursor_device = wl.wp_cursor_shape_manager_v1_get_pointer(p_l_state.cursor_manager, pointer)
+        }
+        if p_l_state.cursor_device != nil do wl.wp_cursor_shape_device_v1_set_shape(p_l_state.cursor_device, serial, 1)
+        p_l_state.pointer_pos = {i32(wl.fixed_to_f32(x)), i32(wl.fixed_to_f32(y))}
+        emit_pointer_event({type = .MOUSE_MOVE, pos = p_l_state.pointer_pos})
+    },
+    leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {
+        emit_pointer_event({type = .MOUSE_LEAVE})
+    },
+    motion = proc "c" (data: rawptr, pointer: ^wl.pointer, time: u32, x, y: wl.fixed) {
+        p_l_state.pointer_pos = {i32(wl.fixed_to_f32(x)), i32(wl.fixed_to_f32(y))}
+        emit_pointer_event({type = .MOUSE_MOVE, pos = p_l_state.pointer_pos})
+    },
+    button = proc "c" (data: rawptr, pointer: ^wl.pointer, serial, time, button, state: u32) {
+        b: Mouse_Button
+        switch button {
+        case wl.BTN_LEFT: b = .Left
+        case wl.BTN_RIGHT: b = .Right
+        case wl.BTN_MIDDLE: b = .Middle
+        case: return
+        }
+        emit_pointer_event({type = state == 0 ? .MOUSE_RELEASE : .MOUSE_PRESS, button = b, pos = p_l_state.pointer_pos})
+    },
+    axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {
+        if axis == wl.POINTER_AXIS_VERTICAL_SCROLL {
+            emit_pointer_event({type = .MOUSE_SCROLL, pos = p_l_state.pointer_pos, scroll = wl.fixed_to_f32(value)*3})
+        }
+    },
     frame = proc "c" (data: rawptr, pointer: ^wl.pointer) {  },                                             // v5
     axis_source = proc "c" (data: rawptr, pointer: ^wl.pointer, axis_source: u32) {  },                     // v5
     axis_stop = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32) {  },                        // v5
@@ -123,6 +153,14 @@ p_listener: wl.pointer_listener = {
     axis_value120 = proc "c" (data: rawptr, pointer: ^wl.pointer, axis: u32, value120: i32) {  },           // v8
     axis_relative_direction = proc "c" (data: rawptr, pointer: ^wl.pointer, axis, direction: u32) {  },     // v9
     warp = proc "c" (data: rawptr, pointer: ^wl.pointer, x, y: wl.fixed) {  },                              // v10
+}
+
+emit_pointer_event :: proc "contextless" (event: Event) {
+    if p_state.t_context == nil do return
+    context = p_state.t_context^
+    e := new(Event)
+    e^ = event
+    push_event(e)
 }
 
 x_base_listener: wl.xdg_wm_base_listener = {
@@ -134,11 +172,28 @@ w_seat_listener: wl.seat_listener = {
     capabilities = proc "c" (data: rawptr, seat: ^wl.seat, capabilities: u32) {
         keyboard := capabilities & wl.SEAT_CAPABILITY_KEYBOARD
 
-        if keyboard == wl.SEAT_CAPABILITY_KEYBOARD {
+        if keyboard != 0 && p_l_state.keyboard == nil {
             p_l_state.keyboard = wl.seat_get_keyboard(p_l_state.seat)
             wl.add_listener(p_l_state.keyboard, &k_listener, nil)
         }
-
+        if keyboard == 0 && p_l_state.keyboard != nil {
+            wl.keyboard_release(p_l_state.keyboard)
+            p_l_state.keyboard = nil
+        }
+        has_pointer := capabilities & wl.SEAT_CAPABILITY_POINTER != 0
+        if has_pointer && p_l_state.pointer == nil {
+            p_l_state.pointer = wl.seat_get_pointer(seat)
+            wl.add_listener(p_l_state.pointer, &p_listener, nil)
+        }
+        if !has_pointer && p_l_state.pointer != nil {
+            if p_l_state.cursor_device != nil {
+                wl.wp_cursor_shape_device_v1_destroy(p_l_state.cursor_device)
+                p_l_state.cursor_device = nil
+            }
+            wl.pointer_release(p_l_state.pointer)
+            p_l_state.pointer = nil
+            emit_pointer_event({type = .INPUT_CANCEL})
+        }
     },
     name = proc "c" (data: rawptr, seat: ^wl.seat, name: cstring) {  },
 }
@@ -147,6 +202,9 @@ w_seat_listener: wl.seat_listener = {
 r_listener: wl.registry_listener = {
     global = proc "c" (data: rawptr, registry: ^wl.registry, name: u32, interface: cstring, version: u32) {
         switch (interface) {
+            case wl.wp_cursor_shape_manager_v1_interface.name:
+                p_l_state.cursor_manager = cast(^wl.wp_cursor_shape_manager_v1)wl.registry_bind(
+                    registry, name, &wl.wp_cursor_shape_manager_v1_interface, 1)
             case wl.compositor_interface.name:
                 p_l_state.compositor = cast(^wl.compositor)wl.registry_bind(
                     registry,
@@ -163,7 +221,7 @@ r_listener: wl.registry_listener = {
                 )
                 wl.add_listener(p_l_state.xdg_wm_base, &x_base_listener, &p_l_state)
             case wl.seat_interface.name:
-                p_l_state.seat = cast(^wl.seat)wl.registry_bind(registry, name, &wl.seat_interface, version)
+                p_l_state.seat = cast(^wl.seat)wl.registry_bind(registry, name, &wl.seat_interface, min(version, 9))
                 wl.add_listener(p_l_state.seat, &w_seat_listener, &p_l_state)
             case wl.wp_viewporter_interface.name:
                 p_l_state.wp_viewporter = cast(^wl.wp_viewporter)wl.registry_bind(
@@ -200,6 +258,7 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
         if width != 0 && height != 0 {
             p_l_state.width = width
             p_l_state.height = height
+            resize_wayland_surface()
         }
     },
     close = proc "c" (data: rawptr, toplevel: ^wl.xdg_toplevel) {
@@ -220,7 +279,19 @@ wp_fractional_scale_listener: wl.wp_fractional_scale_v1_listener = {
     // The scale numerator over a denominator of 120, so 1.5 arrives as 180.
     preferred_scale = proc "c" (data: rawptr, fractional_scale: ^wl.wp_fractional_scale_v1, scale: u32) {
         p_l_state.display_scale = (f32)(scale) / 120.0
+        resize_wayland_surface()
     },
+}
+
+resize_wayland_surface :: proc "contextless" () {
+    if p_l_state.wp_viewport != nil {
+        wl.wp_viewport_set_destination(p_l_state.wp_viewport, p_l_state.width, p_l_state.height)
+    }
+    if p_l_state.egl_window != nil {
+        wl.egl_window_resize(p_l_state.egl_window,
+            i32(f32(p_l_state.width)*p_l_state.display_scale),
+            i32(f32(p_l_state.height)*p_l_state.display_scale), 0, 0)
+    }
 }
 
 startup :: proc(width, height: i32) -> (ok: bool) {
@@ -228,6 +299,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
     // for now @temp
     p_l_state.width = width
     p_l_state.height = height
+    p_l_state.display_scale = 1
 
     p_l_state.display = wl.display_connect(nil)
     if p_l_state.display == nil {
@@ -272,11 +344,10 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 
     wl.add_listener(p_l_state.xdg_toplevel, &xdg_t_listener, &p_l_state)
 
-    wl.xdg_toplevel_set_title(p_l_state.xdg_toplevel, "odin odin odin")
+    wl.xdg_toplevel_set_title(p_l_state.xdg_toplevel, "Odin UI - box laboratory")
     wl.xdg_toplevel_set_app_id(p_l_state.xdg_toplevel, "odin odin odin")
 
-    wl.xdg_toplevel_set_min_size(p_l_state.xdg_toplevel, width, height)
-    wl.xdg_toplevel_set_max_size(p_l_state.xdg_toplevel, width, height)
+    wl.xdg_toplevel_set_min_size(p_l_state.xdg_toplevel, 720, 540)
 
     if p_l_state.wp_viewporter != nil {
         p_l_state.wp_viewport = wl.wp_viewporter_get_viewport(p_l_state.wp_viewporter, p_l_state.surface)
@@ -495,6 +566,8 @@ get_window_size :: proc() -> (i32, i32) {
 
 translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
     switch (xkb_key) {
+        case wl.XKB_KEY_Tab: return .TAB
+        case wl.XKB_KEY_Return: return .ENTER
         case wl.XKB_KEY_Escape:
             return .ESCAPE
         case wl.XKB_KEY_a:

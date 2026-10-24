@@ -15,7 +15,13 @@ Event_Type :: enum {
     KEY_REPEAT,
     MOUSE_MOVE,
     MOUSE_SCROLL,
+    MOUSE_PRESS,
+    MOUSE_RELEASE,
+    MOUSE_LEAVE,
+    INPUT_CANCEL,
 }
+
+Mouse_Button :: enum { Left, Right, Middle }
 
 Vector2 :: [2]i32
 
@@ -143,6 +149,8 @@ Event :: struct {
     type: Event_Type,
     key:  Key_Type,
     pos:  Vector2,
+    button: Mouse_Button,
+    scroll: f32,
 }
 
 Event_List :: struct {
@@ -174,7 +182,10 @@ get_events :: proc() -> Event_List {
     // do the dispatch
     result := dispatch()
     if !result {
-        fmt.eprintln("lol")
+        fmt.eprintln("Platform event dispatch failed")
+        e := new(Event, context.temp_allocator)
+        e.type = .WINDOW_CLOSE
+        push_event(e)
     }
     //
     return p_state.list

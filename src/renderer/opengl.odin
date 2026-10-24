@@ -20,7 +20,7 @@ OpenGL_State :: struct {
     view_loc:              i32,
     // frame specific
     frame_instance_count:  i32,
-    instances:             [dynamic]Draw_Instance,
+    instance_capacity:     int,
 }
 
 @(private)
@@ -76,6 +76,7 @@ backend_init :: proc() {
     gl.GenBuffers(1, &gl_state.instanced_vbo)
     gl.BindBuffer(gl.ARRAY_BUFFER, gl_state.instanced_vbo)
     gl.BufferData(gl.ARRAY_BUFFER, MAX_GLYPHS * size_of(Draw_Instance), nil, gl.DYNAMIC_DRAW)
+    gl_state.instance_capacity = MAX_GLYPHS
 
     stride :: size_of(Draw_Instance)
 
@@ -147,10 +148,13 @@ upload_to_gpu :: proc(g: ^text.Glyphs) {
 
 @(private)
 update_gpu_buffer :: proc(instances: []Draw_Instance) {
-    assert(len(instances) <= MAX_GLYPHS, "Insufficient size on the gpu to hold glyph data")
     gl_state.frame_instance_count = i32(len(instances))
 
     gl.BindBuffer(gl.ARRAY_BUFFER, gl_state.instanced_vbo)
+    if len(instances) > gl_state.instance_capacity {
+        gl_state.instance_capacity = max(len(instances), gl_state.instance_capacity*2)
+        gl.BufferData(gl.ARRAY_BUFFER, gl_state.instance_capacity*size_of(Draw_Instance), nil, gl.DYNAMIC_DRAW)
+    }
     gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(instances) * size_of(Draw_Instance), raw_data(instances))
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 }

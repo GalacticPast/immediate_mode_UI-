@@ -21,11 +21,7 @@ Rect :: struct {
 Draw_State :: struct {
     glyphs:      ^text.Glyphs,
     // Buffers retain their storage across frames and are released in deinit.
-    // for the glyphs
-    g_instances: [dynamic]Draw_Instance,
-    // for the sdf boxes
-    b_instances: [dynamic]Draw_Instance,
-    // the final buffer that gets uploaded to the gpu
+    // One ordered stream: later backgrounds must be able to cover earlier text.
     gpu_buffer:  [dynamic]Draw_Instance,
 }
 
@@ -38,20 +34,16 @@ init :: proc(allocator := context.allocator) {
     d_state.glyphs = text.get_current_font()
     // increased the backing buffer so that the array wont need to keep resizing,
     // could introduce a limit later on
-    d_state.g_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
-    d_state.b_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
     d_state.gpu_buffer = make([dynamic]Draw_Instance, 0, 4098, allocator)
 }
 deinit :: proc() {
     backend_deinit()
-    delete(d_state.g_instances)
-    delete(d_state.b_instances)
     delete(d_state.gpu_buffer)
     d_state = {}
 }
 
 start_command :: proc() {
-
+    assert(len(d_state.gpu_buffer) == 0, "Render the previous command stream first")
 }
 
 line_height :: proc() -> f32 {
@@ -105,6 +97,7 @@ push :: proc {
 }
 
 push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, wrap_width: f32) {
+    if font_size <= 0 do return
     d_s := pl.get_display_scale()
     font_px := font_size * d_s
     pos_px := position * d_s
@@ -150,12 +143,12 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             instance.horizontal_band_locations[k] = {f32(h0.x), f32(h0.y), f32(h1.x), f32(h1.y)}
             instance.vertical_band_locations[k] = {f32(v0.x), f32(v0.y), f32(v1.x), f32(v1.y)}
         }
-        append(&d_state.g_instances, instance)
+        append(&d_state.gpu_buffer, instance)
         pen_pos.x += g.advance * font_px
     }
 }
 
-push_rect :: proc(r: Rect, color: [3]f32) {
+push_rect :: proc(r: Rect, color: [3]f32, radius: f32 = 1, border: f32 = 0) {
     d_s := pl.get_display_scale()
     pos := r.pos * d_s
     dimensions := r.dimensions * d_s
@@ -167,19 +160,17 @@ push_rect :: proc(r: Rect, color: [3]f32) {
         horizontal_band_locations = {},
         vertical_band_locations   = {},
     }
-    append(&d_state.b_instances, instance)
+    // Box instances reuse the otherwise unused glyph matrix for SDF parameters.
+    instance.translation_matrix[0, 0] = radius*d_s
+    instance.translation_matrix[1, 0] = border*d_s
+    append(&d_state.gpu_buffer, instance)
 }
 
 end_command :: proc() {
-    // first append all of the box instances
-    append(&d_state.gpu_buffer, ..d_state.b_instances[:])
-    // append all of the glyph instances
-    append(&d_state.gpu_buffer, ..d_state.g_instances[:])
-    clear(&d_state.b_instances)
-    clear(&d_state.g_instances)
 }
 
 render :: proc() {
+    if len(d_state.gpu_buffer) == 0 do return
     update_gpu_buffer(d_state.gpu_buffer[:])
     p_w, p_h := pl.get_framebuffer_size()
     opengl_render(p_w, p_h)

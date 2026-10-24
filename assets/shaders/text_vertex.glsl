@@ -41,6 +41,7 @@ flat out vec2 frag_glyph_max;
 flat out vec3 frag_color;
 flat out float frag_font_px;
 flat out vec2 frag_box_half_size;
+flat out vec2 frag_box_style; // radius and border width, in pixels
 
 
 out vec2 frag_pos;
@@ -51,9 +52,11 @@ void main()
     float font_px = text_color.a;
     frag_font_px = font_px;
     frag_box_half_size = vec2(0.0);
+    frag_box_style = vec2(0.0);
 
     if (font_px == 0.0)
     {
+        frag_box_style = translation_matrix[0].xy;
         frag_box_half_size = max(curve_indicies, vec2(0.0)) * 0.5;
         // Centered box coordinates in pixels; expand the quad for edge antialiasing.
         frag_pos = position.xy * (frag_box_half_size * 2.0 + vec2(1.0));
