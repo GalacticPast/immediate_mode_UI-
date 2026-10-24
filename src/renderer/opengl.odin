@@ -2,12 +2,11 @@ package renderer
 
 import "../text"
 import "core:math/linalg"
-import "core:mem"
 import gl "vendor:OpenGL"
 
 // uploaded as-is to the instanced vbo, the layout has to match the vertex shader
 
-opengl_state :: struct {
+OpenGL_State :: struct {
     curves_ssbo:           u32,
     horizontal_bands_ssbo: u32,
     vertical_bands_ssbo:   u32,
@@ -21,11 +20,11 @@ opengl_state :: struct {
     view_loc:              i32,
     // frame specific
     frame_instance_count:  i32,
-    instances:             [dynamic]draw_instance,
+    instances:             [dynamic]Draw_Instance,
 }
 
 @(private)
-gl_state: opengl_state
+gl_state: OpenGL_State
 
 // odinfmt: disable
 @(private, rodata)
@@ -55,7 +54,7 @@ HORIZONTAL_BANDS_BINDING :: 2
 VERTICAL_BANDS_BINDING :: 3
 
 @(private)
-backend_init :: proc(allocator: mem.Allocator) {
+backend_init :: proc() {
 
     // relative to the working directory: build.sh puts the binary in the project root, next to assets/
     program, ok := gl.load_shaders_file("assets/shaders/text_vertex.glsl", "assets/shaders/text_fragment.glsl")
@@ -76,18 +75,18 @@ backend_init :: proc(allocator: mem.Allocator) {
 
     gl.GenBuffers(1, &gl_state.instanced_vbo)
     gl.BindBuffer(gl.ARRAY_BUFFER, gl_state.instanced_vbo)
-    gl.BufferData(gl.ARRAY_BUFFER, MAX_GLYPHS * size_of(draw_instance), nil, gl.DYNAMIC_DRAW)
+    gl.BufferData(gl.ARRAY_BUFFER, MAX_GLYPHS * size_of(Draw_Instance), nil, gl.DYNAMIC_DRAW)
 
-    stride :: size_of(draw_instance)
+    stride :: size_of(Draw_Instance)
 
-    link_attrib(1, 2, stride, offset_of(draw_instance, pen_offset))
-    link_attrib(2, 2, stride, offset_of(draw_instance, curve_indices))
-    link_attrib(3, 4, stride, offset_of(draw_instance, color_and_font_px))
+    link_attrib(1, 2, stride, offset_of(Draw_Instance, pen_offset))
+    link_attrib(2, 2, stride, offset_of(Draw_Instance, curve_indices))
+    link_attrib(3, 4, stride, offset_of(Draw_Instance, color_and_font_px))
     for i in 0 ..< 4 {
         column := uintptr(i * size_of([4]f32))
-        link_attrib(u32(4 + i), 4, stride, offset_of(draw_instance, translation_matrix) + column)
-        link_attrib(u32(8 + i), 4, stride, offset_of(draw_instance, horizontal_band_locations) + column)
-        link_attrib(u32(12 + i), 4, stride, offset_of(draw_instance, vertical_band_locations) + column)
+        link_attrib(u32(4 + i), 4, stride, offset_of(Draw_Instance, translation_matrix) + column)
+        link_attrib(u32(8 + i), 4, stride, offset_of(Draw_Instance, horizontal_band_locations) + column)
+        link_attrib(u32(12 + i), 4, stride, offset_of(Draw_Instance, vertical_band_locations) + column)
     }
 
     // every attribute except the quad position (0) advances once per instance
@@ -115,7 +114,7 @@ link_attrib :: proc(index: u32, components: i32, stride: i32, offset: uintptr) {
 
 // needs the GL context, so it runs before the context is destroyed
 @(private)
-text_deinit :: proc() {
+backend_deinit :: proc() {
     gl.DeleteBuffers(1, &gl_state.curves_ssbo)
     gl.DeleteBuffers(1, &gl_state.horizontal_bands_ssbo)
     gl.DeleteBuffers(1, &gl_state.vertical_bands_ssbo)
@@ -126,8 +125,7 @@ text_deinit :: proc() {
     gl.DeleteVertexArrays(1, &gl_state.b_vao)
 
     gl.DeleteProgram(gl_state.shader)
-    // @info: incomplete
-    //free(gl_state , r_state.allocator)
+    gl_state = {}
 }
 
 @(private)
@@ -141,19 +139,19 @@ upload_ssbo :: proc(ssbo: ^u32, binding: u32, data: []$T) {
     gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, binding, ssbo^)
 }
 
-upload_to_gpu :: proc(g: ^text.glyphs) {
+upload_to_gpu :: proc(g: ^text.Glyphs) {
     upload_ssbo(&gl_state.curves_ssbo, CURVES_BINDING, g.curves[:])
     upload_ssbo(&gl_state.horizontal_bands_ssbo, HORIZONTAL_BANDS_BINDING, g.horizontal_bands[:])
     upload_ssbo(&gl_state.vertical_bands_ssbo, VERTICAL_BANDS_BINDING, g.vertical_bands[:])
 }
 
 @(private)
-update_gpu_buffer :: proc(instances: [dynamic]draw_instance) {
+update_gpu_buffer :: proc(instances: []Draw_Instance) {
     assert(len(instances) <= MAX_GLYPHS, "Insufficient size on the gpu to hold glyph data")
     gl_state.frame_instance_count = i32(len(instances))
 
     gl.BindBuffer(gl.ARRAY_BUFFER, gl_state.instanced_vbo)
-    gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(instances) * size_of(draw_instance), raw_data(instances))
+    gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(instances) * size_of(Draw_Instance), raw_data(instances))
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 }
 

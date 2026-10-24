@@ -7,7 +7,7 @@ import gl "vendor:OpenGL"
 import egl "vendor:egl"
 import wl "wayland"
 
-platform_linux_state :: struct {
+Platform_Linux_State :: struct {
     /* Globals */
     display:                     ^wl.display,
     registry:                    ^wl.registry,
@@ -51,7 +51,7 @@ platform_linux_state :: struct {
     deadline:                    time.Tick,
 }
 @(private = "file")
-p_l_state: platform_linux_state
+p_l_state: Platform_Linux_State
 
 k_listener: wl.keyboard_listener = {
     keymap = proc "c" (data: rawptr, keyboard: ^wl.keyboard, format: u32, fd: i32, size: u32) {
@@ -62,13 +62,13 @@ k_listener: wl.keyboard_listener = {
             return
         }
         defer (linux.munmap(map_shm, (uint)(size)))
-        keymap: ^wl.xkb_keymap = wl.xkb_keymap_new_from_string(
+        keymap := wl.xkb_keymap_new_from_string(
             p_l_state.xkb_context,
             cast(cstring)map_shm,
             wl.XKB_KEYMAP_FORMAT_TEXT_V1,
             wl.XKB_KEYMAP_COMPILE_NO_FLAGS,
         )
-        x_state: ^wl.xkb_state = wl.xkb_state_new(keymap)
+        x_state := wl.xkb_state_new(keymap)
         wl.xkb_keymap_unref(p_l_state.xkb_keymap)
         wl.xkb_state_unref(p_l_state.xkb_state)
 
@@ -88,10 +88,10 @@ k_listener: wl.keyboard_listener = {
         context = ctx^
 
         keycode := key + 8
-        sym: u32 = wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
+        sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
         //@info: incomplete
-        k_type: key_type = translate_key_code(sym)
-        e: ^event = new(event)
+        k_type := translate_key_code(sym)
+        e := new(Event)
         e.key = k_type
 
         switch state {
@@ -132,7 +132,7 @@ x_base_listener: wl.xdg_wm_base_listener = {
 }
 w_seat_listener: wl.seat_listener = {
     capabilities = proc "c" (data: rawptr, seat: ^wl.seat, capabilities: u32) {
-        keyboard: u32 = capabilities & wl.SEAT_CAPABILITY_KEYBOARD
+        keyboard := capabilities & wl.SEAT_CAPABILITY_KEYBOARD
 
         if keyboard == wl.SEAT_CAPABILITY_KEYBOARD {
             p_l_state.keyboard = wl.seat_get_keyboard(p_l_state.seat)
@@ -208,7 +208,7 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
             return
         }
         context = p_state.t_context^
-        e: ^event = new(event)
+        e := new(Event)
         e.type = .WINDOW_CLOSE
         push_event(e)
     },
@@ -493,7 +493,7 @@ get_window_size :: proc() -> (i32, i32) {
 }
 
 
-translate_key_code :: proc "contextless" (xkb_key: u32) -> key_type {
+translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
     switch (xkb_key) {
         case wl.XKB_KEY_Escape:
             return .ESCAPE

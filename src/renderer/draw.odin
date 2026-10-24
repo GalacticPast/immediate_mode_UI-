@@ -4,7 +4,7 @@ import "../text"
 
 import "core:math"
 
-draw_instance :: struct {
+Draw_Instance :: struct {
     pen_offset:                [2]f32,
     curve_indices:             [2]f32,
     color_and_font_px:         [4]f32, // the last value of color is the font size
@@ -13,36 +13,41 @@ draw_instance :: struct {
     vertical_band_locations:   [4][4]f32,
 }
 
-rect :: struct {
+Rect :: struct {
     pos:        [2]f32,
     dimensions: [2]f32,
 }
 
-draw_state :: struct {
-    glyphs:      ^text.glyphs,
-    // this uses the context's temp allocator, which gets reset every frame
+Draw_State :: struct {
+    glyphs:      ^text.Glyphs,
+    // Buffers retain their storage across frames and are released in deinit.
     // for the glyphs
-    g_instances: [dynamic]draw_instance,
+    g_instances: [dynamic]Draw_Instance,
     // for the sdf boxes
-    b_instances: [dynamic]draw_instance,
+    b_instances: [dynamic]Draw_Instance,
     // the final buffer that gets uploaded to the gpu
-    gpu_buffer:  [dynamic]draw_instance,
+    gpu_buffer:  [dynamic]Draw_Instance,
 }
 
-d_state: draw_state
+d_state: Draw_State
 
-init :: proc() {
-    backend_init(context.allocator)
+// The allocator must remain valid until deinit; buffers are reused across frames.
+init :: proc(allocator := context.allocator) {
+    backend_init()
     // @info: this is kinda wackk
     d_state.glyphs = text.get_current_font()
     // increased the backing buffer so that the array wont need to keep resizing,
     // could introduce a limit later on
-    d_state.g_instances = make([dynamic]draw_instance, 0, 1024, context.temp_allocator)
-    d_state.b_instances = make([dynamic]draw_instance, 0, 1024, context.temp_allocator)
-    d_state.gpu_buffer = make([dynamic]draw_instance, 0, 4098, context.temp_allocator)
+    d_state.g_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
+    d_state.b_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
+    d_state.gpu_buffer = make([dynamic]Draw_Instance, 0, 4098, allocator)
 }
 deinit :: proc() {
-
+    backend_deinit()
+    delete(d_state.g_instances)
+    delete(d_state.b_instances)
+    delete(d_state.gpu_buffer)
+    d_state = {}
 }
 
 start_command :: proc() {
@@ -55,7 +60,7 @@ line_height :: proc() -> f32 {
 }
 
 // bytes outside ASCII (e.g. UTF-8 lead bytes) fall back to '?'
-get_glyph :: proc(c: u8) -> ^text.glyph_data {
+get_glyph :: proc(c: u8) -> ^text.Glyph_Data {
     code := c
     if code >= text.TEXT_GLYPH_COUNT do code = '?'
     return &d_state.glyphs.data[code]
@@ -130,7 +135,7 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
 
         // @perf: cache it:
         // all of this could be calculated at the font loading, and every frame we would only need to update the pen_offset
-        instance := draw_instance {
+        instance := Draw_Instance {
             // pen goes to em here, so only the pen is scaled. The matrix is already in em
             pen_offset         = pen_pos / font_px,
             curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
@@ -150,11 +155,11 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
     }
 }
 
-push_rect :: proc(r: rect, color: [3]f32) {
+push_rect :: proc(r: Rect, color: [3]f32) {
     d_s := pl.get_display_scale()
     pos := r.pos * d_s
     dimensions := r.dimensions * d_s
-    instance := draw_instance {
+    instance := Draw_Instance {
         pen_offset                = {pos.x, pos.y},
         curve_indices             = {dimensions.x, dimensions.y},
         color_and_font_px         = {color.r, color.g, color.b, 0},
@@ -175,7 +180,7 @@ end_command :: proc() {
 }
 
 render :: proc() {
-    update_gpu_buffer(d_state.gpu_buffer)
+    update_gpu_buffer(d_state.gpu_buffer[:])
     p_w, p_h := pl.get_framebuffer_size()
     opengl_render(p_w, p_h)
     clear(&d_state.gpu_buffer)

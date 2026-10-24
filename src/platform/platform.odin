@@ -4,7 +4,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:time"
 
-event_types :: enum {
+Event_Type :: enum {
     NONE = 0,
     // window events
     WINDOW_CLOSE,
@@ -19,7 +19,7 @@ event_types :: enum {
 
 Vector2 :: [2]i32
 
-key_type :: enum {
+Key_Type :: enum {
     NONE         = 0x00,
     BACKSPACE    = 0x08,
     ENTER        = 0x0D,
@@ -137,31 +137,31 @@ key_type :: enum {
     MAX_KEYS     = 0xfffff,
 }
 
-event :: struct {
-    next: ^event,
-    prev: ^event,
-    type: event_types,
-    key:  key_type,
+Event :: struct {
+    next: ^Event,
+    prev: ^Event,
+    type: Event_Type,
+    key:  Key_Type,
     pos:  Vector2,
 }
 
-event_list :: struct {
-    head:   ^event,
-    tail:   ^event,
+Event_List :: struct {
+    head:   ^Event,
+    tail:   ^Event,
     length: u32,
 }
 
-platform_state :: struct {
-    list:      event_list,
+Platform_State :: struct {
+    list:      Event_List,
     // has the allocator been set or not
     // this has to be set for every time the calles calls get_events
     // and needs to be unset
     t_context: ^runtime.Context,
 }
 
-p_state: platform_state
+p_state: Platform_State
 
-get_events :: proc() -> event_list {
+get_events :: proc() -> Event_List {
 
     ctx := context
     ctx.allocator = ctx.temp_allocator
@@ -172,7 +172,7 @@ get_events :: proc() -> event_list {
     p_state.list = {}
 
     // do the dispatch
-    result: bool = dispatch()
+    result := dispatch()
     if !result {
         fmt.eprintln("lol")
     }
@@ -182,7 +182,7 @@ get_events :: proc() -> event_list {
 
 // do we need to make it contextless?
 // expects fresh, unlinked node
-insert_ll :: proc(list: ^event_list, node: ^event) {
+insert_ll :: proc(list: ^Event_List, node: ^Event) {
     if node == nil do return
 
     if list.tail != nil {
@@ -197,7 +197,7 @@ insert_ll :: proc(list: ^event_list, node: ^event) {
 }
 
 
-eat_event :: proc(list: ^event_list, node: ^event) {
+eat_event :: proc(list: ^Event_List, node: ^Event) {
     if node == nil do return
 
     if node.next != nil {
@@ -215,7 +215,7 @@ eat_event :: proc(list: ^event_list, node: ^event) {
     list.length -= 1
 }
 
-push_event :: proc(e: ^event) {
+push_event :: proc(e: ^Event) {
     insert_ll(&p_state.list, e)
 }
 

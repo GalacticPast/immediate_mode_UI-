@@ -7,13 +7,13 @@ import "core:mem"
 import "core:os"
 import stbtt "vendor:stb/truetype"
 
-curve :: struct {
+Curve :: struct {
     p0: [4]f32,
     p1: [4]f32, // control
     p2: [4]f32,
 }
 
-aabb2 :: struct {
+AABB2 :: struct {
     center:    [2]f32,
     half_size: [2]f32,
 }
@@ -24,38 +24,38 @@ TEXT_GLYPH_COUNT :: 128
 // a tab advances to the next multiple of this many spaces
 TEXT_TAB_WIDTH :: 4
 
-glyph_data :: struct {
+Glyph_Data :: struct {
     translation_matrix: matrix[4, 4]f32,
     // [start, end) into glyphs.curves
     curves_indicies:    [2]i32,
-    aabb:               aabb2,
+    aabb:               AABB2,
     advance:            f32, // em
     // first 8 is the start and end for the horizontal
     bands_loc:          [NUMBER_OF_BANDS * 2][2]i32,
 }
 
-glyphs :: struct {
+Glyphs :: struct {
     funit_to_em:      f32, // usually 2048
     ascent:           f32,
     descent:          f32,
     line_gap:         f32,
-    curves:           [dynamic]curve,
+    curves:           [dynamic]Curve,
     horizontal_bands: [dynamic]i32,
     vertical_bands:   [dynamic]i32,
-    data:             [TEXT_GLYPH_COUNT]glyph_data, // all of ascii
+    data:             [TEXT_GLYPH_COUNT]Glyph_Data, // all of ascii
     font_name:        string,
 }
 
 
-text_state :: struct {
-    glyphs:    glyphs, // for now there's only one
+Text_State :: struct {
+    glyphs:    Glyphs, // for now there's only one
     allocator: mem.Allocator,
 }
 
-t_state: ^text_state
+t_state: ^Text_State
 
 init :: proc(allocator := context.allocator) {
-    t_state = new(text_state, allocator)
+    t_state = new(Text_State, allocator)
     assert(t_state != nil)
     t_state.allocator = allocator
 }
@@ -67,13 +67,13 @@ deinit :: proc() {
 }
 
 @(private)
-delete_glyphs :: proc(g: ^glyphs) {
+delete_glyphs :: proc(g: ^Glyphs) {
     delete(g.curves)
     delete(g.horizontal_bands)
     delete(g.vertical_bands)
 }
 
-load_font :: proc(file_path: string) -> ^glyphs {
+load_font :: proc(file_path: string) -> ^Glyphs {
     assert(t_state != nil)
     allocator := t_state.allocator
 
@@ -86,8 +86,8 @@ load_font :: proc(file_path: string) -> ^glyphs {
     res := stbtt.InitFont(&font_info, raw_data(font_content), 0)
     assert(bool(res), "font loading failed")
 
-    g: glyphs
-    g.curves = make([dynamic]curve, allocator)
+    g: Glyphs
+    g.curves = make([dynamic]Curve, allocator)
     g.horizontal_bands = make([dynamic]i32, allocator)
     g.vertical_bands = make([dynamic]i32, allocator)
     g.funit_to_em = stbtt.ScaleForMappingEmToPixels(&font_info, 1.0)
@@ -124,12 +124,12 @@ load_font :: proc(file_path: string) -> ^glyphs {
                 case .vline:
                     p_2 := [4]f32{f32(v.x), f32(v.y), 0, 0}
                     control_p := (p_2 + curr_point) * 0.5
-                    append(&g.curves, curve{p0 = curr_point, p1 = control_p, p2 = p_2})
+                    append(&g.curves, Curve{p0 = curr_point, p1 = control_p, p2 = p_2})
                     curr_point = p_2
                 case .vcurve:
                     p_2 := [4]f32{f32(v.x), f32(v.y), 0, 0}
                     control_p := [4]f32{f32(v.cx), f32(v.cy), 0, 0}
-                    append(&g.curves, curve{p0 = curr_point, p1 = control_p, p2 = p_2})
+                    append(&g.curves, Curve{p0 = curr_point, p1 = control_p, p2 = p_2})
                     curr_point = p_2
                 case .vcubic:
                 // TrueType outlines are quadratic only
@@ -155,7 +155,7 @@ load_font :: proc(file_path: string) -> ^glyphs {
     return &t_state.glyphs
 }
 
-get_current_font :: proc() -> ^glyphs {
+get_current_font :: proc() -> ^Glyphs {
     return &t_state.glyphs
 }
 
@@ -166,7 +166,7 @@ solve_bezier :: proc(a, b, c, t: f32) -> f32 {
 }
 
 @(private)
-compute_glyph_bbox :: proc(g: ^glyphs) {
+compute_glyph_bbox :: proc(g: ^Glyphs) {
     for &data in g.data {
         start := data.curves_indicies.x
         end := data.curves_indicies.y

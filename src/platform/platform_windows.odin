@@ -8,7 +8,7 @@ import win "core:sys/windows"
 import "core:time"
 import gl "vendor:OpenGL"
 
-platform_windows_state :: struct {
+Platform_Windows_State :: struct {
     h_instance:     win.HINSTANCE,
     hwnd:           win.HWND,
     hdc:            win.HDC,
@@ -21,7 +21,7 @@ platform_windows_state :: struct {
     deadline:       time.Tick,
 }
 @(private = "file")
-p_w_state: platform_windows_state
+p_w_state: Platform_Windows_State
 
 @(private = "file")
 WINDOW_CLASS_NAME :: "imgui_odin"
@@ -79,7 +79,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             return 0
         // still fall through to DefWindowProc, alt+f4 and the alt menu go through the SYSKEY messages
         case win.WM_KEYDOWN, win.WM_SYSKEYDOWN, win.WM_KEYUP, win.WM_SYSKEYUP:
-            e: event = {
+            e: Event = {
                 key = translate_key_code(w_param),
             }
             if msg == win.WM_KEYUP || msg == win.WM_SYSKEYUP {
@@ -108,11 +108,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
 }
 
 @(private = "file")
-push_window_event :: proc(e: event) {
+push_window_event :: proc(e: Event) {
     if p_state.t_context == nil {
         return
     }
-    node: ^event = new(event)
+    node := new(Event)
     node^ = e
     push_event(node)
 }
@@ -313,8 +313,8 @@ get_window_size :: proc() -> (i32, i32) {
     return p_w_state.width, p_w_state.height
 }
 
-// key_type already uses the windows virtual key codes as its values
-translate_key_code :: proc(vk: win.WPARAM) -> key_type {
-    k := key_type(vk)
+// Key_Type already uses the windows virtual key codes as its values
+translate_key_code :: proc(vk: win.WPARAM) -> Key_Type {
+    k := Key_Type(vk)
     return reflect.enum_value_has_name(k) ? k : .NONE
 }

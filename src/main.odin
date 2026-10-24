@@ -34,12 +34,12 @@ main :: proc() {
 
     text.init()
     defer text.deinit()
-    glyphs: ^text.glyphs = text.load_font("assets/font/Archivo-Regular.ttf")
+    glyphs := text.load_font("assets/font/Archivo-Regular.ttf")
     r.init()
     defer r.deinit()
     r.upload_to_gpu(glyphs)
 
-    run: bool = true
+    run := true
     //position: [2]f32 = {20 * display_scale, 20 * display_scale}
     position: [2]f32 = {0, 0}
     color: [3]f32 = {1, 1, 1}
@@ -47,12 +47,10 @@ main :: proc() {
     wrap_width: f32 = 0.0
 
     for run {
-        list: pl.event_list = pl.get_events()
-        e: ^pl.event = list.head
-        // how am I going to eat it though ?
-        eat: ^pl.event = nil
+        list := pl.get_events()
+        e := list.head
         for e != nil {
-            defer { eat = nil }
+            eat: ^pl.Event
             #partial switch e.type {
                 case .WINDOW_CLOSE:
                     run = false
@@ -73,7 +71,7 @@ main :: proc() {
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
         r.start_command()
-        r.push({position, {65, 65}}, {0, 0, 0.4})
+        r.push({{100, 100}, {65, 65}}, {0, 0, 0.4})
         r.push("Havavavavavafads;lkfjasdihadkgaskdjgh8oiurijeagndbmn", position, color, font_size, wrap_width)
         r.end_command()
 
