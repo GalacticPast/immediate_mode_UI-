@@ -182,6 +182,7 @@ get_events :: proc() -> Event_List {
 
 // do we need to make it contextless?
 // expects fresh, unlinked node
+@(private)
 insert_ll :: proc(list: ^Event_List, node: ^Event) {
     if node == nil do return
 
