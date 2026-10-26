@@ -1,5 +1,6 @@
 package ui
 
+import pl "../platform"
 import "base:runtime"
 import "core:mem"
 import "core:slice"
@@ -54,34 +55,68 @@ Box_Desc :: struct {
     children_layout_axis: Axis_Type,
 }
 
+Draw_Type :: enum {
+    NONE,
+    RECTANGLE,
+    TEXT,
+}
+
+Rect :: struct {
+    pos, dimen: [2]f32,
+}
+
+Draw_Command :: struct {
+    clip: Rect,
+    type: Draw_Type,
+}
+
+
 @(private)
 State :: struct {
     root:               ^Box,
     ind:                i32,
     arenas:             [2]mem.Dynamic_Arena, // double buffered
+    ui_frame_allocator: runtime.Allocator,    // shortcut to the arena
 
     // frame specific
+    frame_allocator:    runtime.Allocator,
     curr_parent:        [dynamic]^Box,
-    ui_frame_allocator: runtime.Allocator,
+    draw_commands:      [dynamic]Draw_Command,
 }
 
 @(private)
 state: State
 
 init :: proc() {
+    state.frame_allocator = context.temp_allocator
+
     mem.dynamic_arena_init(&state.arenas[0])
     mem.dynamic_arena_init(&state.arenas[1])
+    state.draw_commands = make([dynamic]Draw_Command, state.frame_allocator)
 }
 
 @(deferred_out = end_build)
-build :: proc() {
+build :: proc() -> bool {
     state.ui_frame_allocator = mem.dynamic_arena_allocator(&state.arenas[state.ind])
 
     allocator := state.ui_frame_allocator
     state.curr_parent = make([dynamic]^Box, allocator)
+    // todo: root panel
+    p_w, p_h := pl.get_window_size()
+    description: Box_Desc = {
+        h_size = {type = .FIXED, value = f32(p_w)},
+        v_size = {type = .FIXED, value = f32(p_h)},
+        action_type = {},
+        children_layout_axis = .HORIZONTAL,
+    }
+
+    root := create_box("root", description)
+    append(&state.curr_parent, root)
+
+    return true
 }
 
-end_build :: proc() {
+end_build :: proc(_: bool) {
     state.ind = (state.ind + 1) % 2 // 2 because its double buffered
     delete(state.curr_parent)
     mem.dynamic_arena_reset(&state.arenas[state.ind]) // reset the current arena
@@ -139,11 +174,10 @@ create_box :: proc(
     node.children_layout_axis = description.children_layout_axis
 
     if len(state.curr_parent) > 0 {
-        node.parent = slice.last(state.curr_parent[:])
-
+        parent := slice.last(state.curr_parent[:])
+        node.parent = parent
+        insert_ll(parent, node)
     }
-
-
     return node
 }
 
@@ -165,7 +199,9 @@ panel :: proc(
 }
 
 panel_end :: proc(open: bool) {     // if the panel is clicked or focused
-    if open {
-        pop(&state.curr_parent)
-    }
+    pop(&state.curr_parent)
+}
+
+build_draw_commands :: proc() {
+
 }
