@@ -191,7 +191,15 @@ panel :: proc(
         children_layout_axis = .VERTICAL,
     },
 ) -> bool {
-
+    assert(
+        description.h_size.type == .BASED_ON_PARENT_PCT &&
+        description.h_size.value >= 0 &&
+        description.h_size.value < 1,
+    )
+    assert(
+        description.v_size.type == .BASED_ON_PARENT_PCT ||
+        (description.v_size.value >= 0 && description.v_size.value <= 1),
+    )
     panel := create_box(title, description)
     append(&state.curr_parent, panel)
 
@@ -202,6 +210,29 @@ panel_end :: proc(open: bool) {     // if the panel is clicked or focused
     pop(&state.curr_parent)
 }
 
-build_draw_commands :: proc() {
+traverse_tree :: proc(node: ^Box) {
+    if node == nil {
+        return
+    }
+    traverse_tree(node.first)
+    for elem := node.first; elem != nil; elem = elem.next {
+        switch (node.h_size.type) {
+            case .BASED_ON_TEXT:
+            //@todo:
+            case .BASED_ON_CHILDREN_SUM:
+            //@todo:
+            case .BASED_ON_PARENT_PCT:
+                parent: ^Box = node.parent
+                assert(parent.h_size.type == .FIXED) // this should be fixed
+                node.dimensions.x = parent.h_size.value * elem.h_size.value
 
+            case .NONE, .FIXED:
+        }
+    }
+
+}
+
+build_draw_commands :: proc() {
+    root := state.root
+    dfs(root)
 }
