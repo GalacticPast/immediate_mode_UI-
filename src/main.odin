@@ -2,8 +2,9 @@ package main
 import "core:fmt"
 import "core:os"
 import "text"
-import gl "vendor:OpenGL"
+import ui "ui"
 
+import gl "vendor:OpenGL"
 
 import pl "platform"
 import r "renderer"
@@ -32,6 +33,9 @@ main :: proc() {
     f_w, f_h := pl.get_framebuffer_size()
     gl.Viewport(0, 0, f_w, f_h)
 
+    ui.init()
+    defer ui.deinit()
+
     text.init()
     defer text.deinit()
     glyphs := text.load_font("assets/font/Archivo-Regular.ttf")
@@ -41,10 +45,10 @@ main :: proc() {
 
     run := true
     //position: [2]f32 = {20 * display_scale, 20 * display_scale}
-    position: [2]f32 = {0, 0}
+    // position: [2]f32 = {0, 0}
     color: [3]f32 = {1, 1, 1}
-    font_size: f32 = 12
-    wrap_width: f32 = 0.0
+    // font_size: f32 = 12
+    //wrap_width: f32 = 0.0
 
     for run {
         list := pl.get_events()
@@ -66,13 +70,38 @@ main :: proc() {
                 pl.eat_event(&list, eat)
             }
         }
+
+        if ui.build(list) {
+            description := ui.Box_Desc {
+                h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+            }
+            if ui.panel("panel_1", description) {
+                if ui.button("button") {
+                    fmt.println("button pressed")
+                }
+            }
+            if ui.panel("panel_2", description) {
+
+            }
+        }
+        ui_draw_commands := ui.build_draw_commands()
         // draw
+
+
         gl.ClearColor(0, 0, 0, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)
 
         r.start_command()
-        r.push({{100, 100}, {65, 65}}, {0, 0, 0.4})
-        r.push("Havavavavavafads;lkfjasdihadkgaskdjgh8oiurijeagndbmn", position, color, font_size, wrap_width)
+        for cmd in ui_draw_commands {
+            switch (cmd.type) {
+                case .RECTANGLE:
+                    r.push({cmd.clip.pos, cmd.clip.dimen}, {1, 0, 0})
+                case .TEXT:
+                    r.push(cmd.str, cmd.clip.pos, color, 12, 0)
+                case .NONE:
+            }
+        }
         r.end_command()
 
         r.render()
