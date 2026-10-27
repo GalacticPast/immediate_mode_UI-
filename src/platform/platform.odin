@@ -14,10 +14,13 @@ Event_Type :: enum {
     KEY_RELEASE,
     KEY_REPEAT,
     MOUSE_MOVE,
+    MOUSE_PRESS,
     MOUSE_SCROLL,
 }
 
 Vector2 :: [2]i32
+
+Mouse_press_type :: enum {}
 
 Key_Type :: enum {
     NONE         = 0x00,
@@ -134,6 +137,11 @@ Key_Type :: enum {
     PERIOD       = 0xBE,
     SLASH        = 0xBF,
     GRAVE        = 0xC0,
+    // copied from linux/linux_event_codes.h
+    BTN_LEFT     = 0x110,
+    BTN_RIGHT    = 0x111,
+    BTN_MIDDLE   = 0x112,
+    //
     MAX_KEYS     = 0xfffff,
 }
 

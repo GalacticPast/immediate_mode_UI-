@@ -81,9 +81,7 @@ k_listener: wl.keyboard_listener = {
         // I have no idea why I need to add 8 but the docs say so I guess
         // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
         ctx := p_state.t_context
-        if ctx == nil {
-            return
-        }
+        if ctx == nil do return
         // set the context
         context = ctx^
 
@@ -91,7 +89,7 @@ k_listener: wl.keyboard_listener = {
         sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
         //@info: incomplete
         k_type := translate_key_code(sym)
-        e := new(Event)
+        e := new(Event) // @perf: pointer dangling
         e.key = k_type
 
         switch state {
@@ -110,11 +108,36 @@ k_listener: wl.keyboard_listener = {
 }
 
 // Events up to version 10. Which ones arrive depends on the seat version we bind.
+BTN_LEFT :: 0x110
+BTN_RIGHT :: 0x111
+BTN_MIDDLE :: 0x112
+
 p_listener: wl.pointer_listener = {
     enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {  },
     leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {  },
-    motion = proc "c" (data: rawptr, pointer: ^wl.pointer, time: u32, x, y: wl.fixed) {  },
-    button = proc "c" (data: rawptr, pointer: ^wl.pointer, serial, time, button, state: u32) {  },
+    motion = proc "c" (data: rawptr, pointer: ^wl.pointer, time: u32, x, y: wl.fixed) {
+        mouse_x := wl.fixed_to_f32(x)
+        mouse_y := wl.fixed_to_f32(y)
+
+        ctx := p_state.t_context
+        if ctx == nil do return
+        // set the context
+        context = ctx^
+        e := new(Event) // @perf:
+        e.pos = {i32(mouse_x), i32(mouse_y)}
+        e.type = .MOUSE_MOVE
+        push_event(e)
+    },
+    button = proc "c" (data: rawptr, pointer: ^wl.pointer, serial, time, button, state: u32) {
+        ctx := p_state.t_context
+        if ctx == nil do return
+        // set the context
+        context = ctx^
+        e := new(Event) // @perf:
+        e.type = .MOUSE_PRESS
+        e.key = cast(Key_Type)button
+        push_event(e)
+    },
     axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {  },
     frame = proc "c" (data: rawptr, pointer: ^wl.pointer) {  },                                             // v5
     axis_source = proc "c" (data: rawptr, pointer: ^wl.pointer, axis_source: u32) {  },                     // v5
@@ -133,10 +156,15 @@ x_base_listener: wl.xdg_wm_base_listener = {
 w_seat_listener: wl.seat_listener = {
     capabilities = proc "c" (data: rawptr, seat: ^wl.seat, capabilities: u32) {
         keyboard := capabilities & wl.SEAT_CAPABILITY_KEYBOARD
+        mouse := capabilities & wl.SEAT_CAPABILITY_POINTER
 
         if keyboard == wl.SEAT_CAPABILITY_KEYBOARD {
             p_l_state.keyboard = wl.seat_get_keyboard(p_l_state.seat)
             wl.add_listener(p_l_state.keyboard, &k_listener, nil)
+        }
+        if mouse == wl.SEAT_CAPABILITY_POINTER {
+            p_l_state.pointer = wl.seat_get_pointer(p_l_state.seat)
+            wl.add_listener(p_l_state.pointer, &p_listener, nil)
         }
 
     },
@@ -208,7 +236,7 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
             return
         }
         context = p_state.t_context^
-        e := new(Event)
+        e := new(Event) // @perf: dangling
         e.type = .WINDOW_CLOSE
         push_event(e)
     },

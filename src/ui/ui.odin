@@ -50,6 +50,11 @@ Box :: struct {
     children_layout_axis:            Axis_Type,
     str:                             string,
 
+    //signals
+    hovered:                         bool,
+    clicked:                         bool,
+
+
     //after build
     pos:                             [2]f32,
     dimensions:                      [2]f32,
@@ -176,7 +181,8 @@ button :: proc(
 ) -> bool {
 
     button := create_box(str, description)
-    return check_action(button)
+    check_action(button)
+    return button.clicked
 }
 
 mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
@@ -189,16 +195,22 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
     return res
 }
 
-check_action :: proc(elem: ^Box) -> bool {
+check_action :: proc(elem: ^Box) {
     for e := state.events.head; e != nil; e = e.next {
-        if e.type == .MOUSE_MOVE {
-            if mouse_collision(e.pos, {elem.pos, elem.dimensions}) {
-                pl.eat_event(&state.events, e)
-                return true
-            }
+        eat: ^pl.Event
+        #partial switch (e.type) {
+            case .MOUSE_MOVE:
+                if mouse_collision(e.pos, {elem.pos, elem.dimensions}) {
+                    eat = e
+                    elem.hovered = true
+                }
+            case .MOUSE_PRESS:
+                if e.key == .BTN_RIGHT {
+                    eat = e
+                    elem.clicked = true
+                }
         }
     }
-    return false
 }
 
 
@@ -268,9 +280,12 @@ create_box :: proc(
     node.flags = description.flags
     node.children_layout_axis = description.children_layout_axis
     node.key = key
+
     // invalidate the list
     node.prev, node.next, node.first, node.last = nil, nil, nil, nil
     node.parent = parent
+    node.clicked = false
+    node.hovered = false
     if parent != nil do insert_ll(parent, node)
 
     //insert/update the hashmap
@@ -282,30 +297,35 @@ create_box :: proc(
 
 calc_sizes :: proc(node: ^Box) {
     if node == nil do return
-    calc_sizes(node.first)
     for elem := node; elem != nil; elem = elem.next {
+        calc_sizes(elem.first)
         text_size := r.calculate_size(elem.str, 12)
-        switch (node.h_size.type) {
+        switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
             case .BASED_ON_CHILDREN_SUM:
             //@todo:
             case .BASED_ON_PARENT_PCT:
-                parent: ^Box = node.parent
+                parent: ^Box = elem.parent
                 assert(parent.h_size.type == .FIXED) // this should be fixed
                 elem.dimensions.x = parent.h_size.value * elem.h_size.value
-            case .NONE, .FIXED:
+            case .FIXED:
+                elem.dimensions.x = elem.h_size.value
+            case .NONE:
         }
-        switch (node.v_size.type) {
+        switch (elem.v_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.y = text_size[1] + 5 // 2.5 units in each dir
             case .BASED_ON_CHILDREN_SUM:
             //@todo:
             case .BASED_ON_PARENT_PCT:
-                parent: ^Box = node.parent
+                parent: ^Box = elem.parent
                 assert(parent.v_size.type == .FIXED) // this should be fixed
                 elem.dimensions.y = parent.v_size.value * elem.v_size.value
-            case .NONE, .FIXED:
+            case .FIXED:
+                elem.dimensions.y = elem.v_size.value
+            case .NONE:
+
         }
     }
 }
@@ -331,8 +351,8 @@ calc_positions :: proc(node: ^Box) {
             case:
                 assert(false, "Children layout not specified.")
         }
+        calc_positions(elem.first)
     }
-    calc_positions(node.first)
 }
 
 pre_order_traversal :: proc(node: ^Box) {
@@ -343,8 +363,8 @@ pre_order_traversal :: proc(node: ^Box) {
             text_pos: [2]f32 = {elem.pos.x + 2, elem.pos.y + 2}
             append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, str = elem.str})
         }
+        pre_order_traversal(elem.first)
     }
-    pre_order_traversal(node.first)
 }
 
 build_draw_commands :: proc() -> []Draw_Command {

@@ -77,12 +77,23 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel_1", description) {
-                if ui.button("button") {
+                if ui.button("button_1") {
                     fmt.println("button pressed")
                 }
             }
             if ui.panel("panel_2", description) {
-
+                if ui.button("button_2") {
+                    fmt.println("button pressed")
+                }
+                if ui.button("button_3") {
+                    fmt.println("button pressed")
+                }
+                if ui.button("button_4") {
+                    fmt.println("button pressed")
+                }
+                if ui.button("button_5") {
+                    fmt.println("button pressed")
+                }
             }
         }
         ui_draw_commands := ui.build_draw_commands()
