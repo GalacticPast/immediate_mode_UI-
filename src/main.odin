@@ -44,11 +44,6 @@ main :: proc() {
     r.upload_to_gpu(glyphs)
 
     run := true
-    //position: [2]f32 = {20 * display_scale, 20 * display_scale}
-    // position: [2]f32 = {0, 0}
-    color: [3]f32 = {1, 1, 1}
-    // font_size: f32 = 12
-    //wrap_width: f32 = 0.0
 
     for run {
         list := pl.get_events()
@@ -76,23 +71,12 @@ main :: proc() {
                 h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
-            if ui.panel("panel_1", description) {
-                if ui.button("button_1") {
-                    fmt.println("button pressed")
-                }
-            }
             if ui.panel("panel_2", description) {
-                if ui.button("button_2") {
-                    fmt.println("button pressed")
-                }
-                if ui.button("button_3") {
-                    fmt.println("button pressed")
-                }
-                if ui.button("button_4") {
-                    fmt.println("button pressed")
-                }
-                if ui.button("button_5") {
-                    fmt.println("button pressed")
+                if ui.box({children_layout_axis = .HORIZONTAL}) {
+                    ui.label("label")
+                    if ui.button("button_2", {color = {0.3, 0.3, 0}}) {
+                        fmt.println("button pressed")
+                    }
                 }
             }
         }
@@ -107,9 +91,9 @@ main :: proc() {
         for cmd in ui_draw_commands {
             switch (cmd.type) {
                 case .RECTANGLE:
-                    r.push({cmd.clip.pos, cmd.clip.dimen}, {1, 0, 0})
+                    r.push({cmd.clip.pos, cmd.clip.dimen}, cmd.color)
                 case .TEXT:
-                    r.push(cmd.str, cmd.clip.pos, color, 12, 0)
+                    r.push(cmd.str, cmd.clip.pos, cmd.color, 12, 0)
                 case .NONE:
             }
         }
