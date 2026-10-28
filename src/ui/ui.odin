@@ -15,6 +15,7 @@ WIDGET_FLAG :: enum {
     RESIZABLE,
     DRAW_TEXT,
     DRAW_RECT,
+    DRAW_BORDER,
 }
 
 Widget_Flags :: bit_set[WIDGET_FLAG;u32]
@@ -216,7 +217,7 @@ box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
-    box_flags := description.flags.? or_else {.NONE}
+    box_flags := description.flags.? or_else {.NONE, .DRAW_BORDER, .DRAW_RECT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
 
@@ -469,6 +470,16 @@ pre_order_traversal :: proc(node: ^Box) {
         color := elem.color
         if elem.hovered {
             color = {1, 1, 0}
+        }
+        if .DRAW_BORDER in elem.flags {
+            append(
+                &state.draw_commands,
+                {
+                    clip = {{elem.pos.x - 1.5, elem.pos.y - 1.5}, elem.dimensions + 2.5},
+                    color = {1, 0, 0},
+                    type = .RECTANGLE,
+                },
+            )
         }
         if .DRAW_RECT in elem.flags {
             append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = color, type = .RECTANGLE})
