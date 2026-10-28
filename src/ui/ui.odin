@@ -212,7 +212,18 @@ panel_end :: proc(open: bool) {
 
 box_counter := 0
 
+
 @(deferred_out = box_end)
+row :: proc() -> bool {
+    box({children_layout_axis = .HORIZONTAL})
+    return true
+}
+@(deferred_out = box_end)
+column :: proc() -> bool {
+    box({children_layout_axis = .VERTICAL})
+    return true
+}
+
 box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
@@ -225,7 +236,6 @@ box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    // warn: this is very bad,
     box := create_box("", box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
 
     append(&state.curr_parent, box)
