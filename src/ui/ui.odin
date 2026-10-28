@@ -3,7 +3,6 @@ package ui
 import pl "../platform"
 import r "../renderer"
 import "base:runtime"
-import "core:fmt"
 import "core:hash"
 import "core:mem"
 import "core:slice"
@@ -42,6 +41,7 @@ Size :: struct {
 Box :: struct {
     // this should persist between draws
     key:                             u64,
+    build_index:                     u64, // up to which version did we build it
 
     // per build
     // first/last -> children
@@ -91,20 +91,22 @@ Draw_Command :: struct {
 
 @(private)
 State :: struct {
-    allocator:       runtime.Allocator,
-    arena:           mem.Dynamic_Arena,
-    tree:            map[u64]^Box,
-    curr_parent:     [dynamic]^Box,
-    draw_commands:   [dynamic]Draw_Command,
-    def_color:       [3]f32,
+    allocator:        runtime.Allocator,
+    frame_allocator:  runtime.Allocator,
+    arena:            mem.Dynamic_Arena,
+    tree:             map[u64]^Box,
+    curr_parent:      [dynamic]^Box,
+    draw_commands:    [dynamic]Draw_Command,
+    def_color:        [3]f32,
+    curr_build_index: u64,
 
     // frame specific
-    root:            ^Box,
-    events:          pl.Event_List,
+    root:             ^Box,
+    events:           pl.Event_List,
     // this one gets cached
-    mouse_pos:       [2]i32,
+    mouse_pos:        [2]i32,
     // this one resets every frame
-    mouse_btn_press: pl.Key_Type,
+    mouse_btn_press:  pl.Key_Type,
 }
 
 @(private)
@@ -113,10 +115,12 @@ state: State
 init :: proc() {
     mem.dynamic_arena_init(&state.arena)
     state.allocator = mem.dynamic_arena_allocator(&state.arena)
+    state.frame_allocator = context.temp_allocator
     state.draw_commands = make([dynamic]Draw_Command, state.allocator)
     state.curr_parent = make([dynamic]^Box, state.allocator)
     state.tree = make(map[u64]^Box, state.allocator)
     state.def_color = {0.216, 0.247, 0.290}
+    state.curr_build_index = 0
 }
 deinit :: proc() {
     delete(state.draw_commands)
@@ -127,6 +131,8 @@ deinit :: proc() {
 
 @(deferred_out = end_build)
 build :: proc(events: pl.Event_List) -> bool {
+    state.curr_build_index += 1
+
     clear(&state.draw_commands) // clear it
     clear(&state.curr_parent)
 
@@ -150,7 +156,7 @@ build :: proc(events: pl.Event_List) -> bool {
         }
     }
 
-    // todo: root panel
+
     p_w, p_h := pl.get_window_size()
     h_size := Size {
         type  = .FIXED,
@@ -218,14 +224,8 @@ box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    box := create_box(
-        fmt.tprintf("box_count##%d", box_counter),
-        box_h_size,
-        box_v_size,
-        box_flags,
-        box_children_layout_axis,
-        box_color,
-    )
+    // warn: this is very bad,
+    box := create_box("", box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
 
     append(&state.curr_parent, box)
     box_counter += 1
@@ -330,19 +330,46 @@ create_box :: proc(
     children_layout_axis: Axis_Type,
     color: [3]f32,
 ) -> ^Box {
-    key: u64
-    parent: ^Box = nil
+
+    key: u64 = 0 // useful for transient boxes that have no state to store between frames
+    imm_parent: ^Box = nil
+    key_parent: ^Box = nil
+
     if len(state.curr_parent) > 0 {
-        parent = slice.last(state.curr_parent[:])
-        key = hash_key(title, parent.key)
-    } else {
-        key = hash_key(title)
+        imm_parent = slice.last(state.curr_parent[:])
+        key_parent = imm_parent
+        // parent might have key == 0
+        for key_parent != nil && key_parent.key == 0 {
+            key_parent = key_parent.parent
+        }
+        if key_parent == nil {
+            assert(
+                false,
+                "This is very bad. Couldnt hash Id for this because the all of the parents in its chain are nil",
+            )
+        }
+    }
+
+    if len(title) > 0 {
+        if key_parent != nil {
+            key = hash_key(title, key_parent.key)
+        } else {
+            key = hash_key(title)
+        }
     }
 
     node, found := state.tree[key]
-
     if !found {
-        node = new(Box, state.allocator)
+        if key == 0 {
+            node = new(Box, state.frame_allocator) // for transient boxes
+        } else {
+            node = new(Box, state.allocator)
+        }
+    } else {
+        assert(
+            node.build_index != state.curr_build_index,
+            "This box was already touched/created this frame. It means that the ID of the widget matches.",
+        )
     }
 
     node.str = title
@@ -354,15 +381,19 @@ create_box :: proc(
 
     // invalidate the list
     node.prev, node.next, node.first, node.last = nil, nil, nil, nil
-    node.parent = parent
+    node.parent = imm_parent
     node.clicked = false
     node.hovered = false
     node.color = color
+    node.build_index = state.curr_build_index
 
-    if parent != nil do insert_ll(parent, node)
+    // damn the parent changed
+    if imm_parent != nil do insert_ll(imm_parent, node)
 
     //insert/update the hashmap
-    state.tree[key] = node
+    if key != 0 {
+        state.tree[key] = node
+    }
 
     return node
 }

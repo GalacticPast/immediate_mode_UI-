@@ -73,11 +73,15 @@ main :: proc() {
             }
             if ui.panel("panel_2", description) {
                 if ui.box({children_layout_axis = .HORIZONTAL}) {
-                    ui.label("label")
+                    if ui.box({children_layout_axis = .VERTICAL}) {
+                        ui.label("label")
+                        ui.label("label_1")
+                    }
                     if ui.button("button_2", {color = {0.3, 0.3, 0}}) {
                         fmt.println("button pressed")
                     }
                 }
+
             }
         }
         ui_draw_commands := ui.build_draw_commands()
