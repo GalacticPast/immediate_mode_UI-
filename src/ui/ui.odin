@@ -16,6 +16,7 @@ WIDGET_FLAG :: enum {
     DRAW_TEXT,
     DRAW_RECT,
     DRAW_BORDER,
+    DRAW_CUSTOM,
 }
 
 Widget_Flags :: bit_set[WIDGET_FLAG;u32]
@@ -53,6 +54,10 @@ Box :: struct {
     flags:                           Widget_Flags,
     children_layout_axis:            Axis_Type,
     label:                           string,
+
+    // atached every_frame
+    custom_draw:                     proc(elem: ^Box, value: rawptr),
+    custom_data:                     rawptr,
 
     //signals
     hovered:                         bool,
@@ -93,14 +98,16 @@ Draw_Command :: struct {
 
 @(private)
 State :: struct {
-    allocator:        runtime.Allocator,
-    frame_allocator:  runtime.Allocator,
     arena:            mem.Dynamic_Arena,
+    allocator:        runtime.Allocator, // from arena
+    frame_allocator:  runtime.Allocator,
     tree:             map[u64]^Box,
     curr_parent:      [dynamic]^Box,
     draw_commands:    [dynamic]Draw_Command,
     def_color:        [3]f32,
     curr_build_index: u64,
+    font_size:        f32,
+    debug:            bool,
 
     // frame specific
     root:             ^Box,
@@ -116,6 +123,7 @@ state: State
 
 init :: proc() {
     mem.dynamic_arena_init(&state.arena)
+    state.font_size = 12
     state.allocator = mem.dynamic_arena_allocator(&state.arena)
     state.frame_allocator = context.temp_allocator
     state.draw_commands = make([dynamic]Draw_Command, state.allocator)
@@ -123,6 +131,8 @@ init :: proc() {
     state.tree = make(map[u64]^Box, state.allocator)
     state.def_color = {0.216, 0.247, 0.290}
     state.curr_build_index = 0
+
+    state.debug = false
 }
 
 deinit :: proc() {
@@ -132,7 +142,8 @@ deinit :: proc() {
     mem.dynamic_arena_destroy(&state.arena)
 }
 
-begin_build :: proc(events: pl.Event_List) {
+@(deferred_out = build_end)
+build :: proc(events: pl.Event_List) -> bool {
     state.curr_build_index += 1
 
     clear(&state.draw_commands) // clear it
@@ -180,13 +191,15 @@ begin_build :: proc(events: pl.Event_List) {
 
     append(&state.curr_parent, state.root)
     pl.set_cursor_icon(.DEFAULT)
+    return true
 }
 
-build_end :: proc() {
+build_end :: proc(_: bool) {
     state.mouse_btn_press = .NONE
 }
 
-panel_begin :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+@(deferred_out = panel_end)
+panel :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
@@ -204,30 +217,25 @@ panel_begin :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, n
     return true
 }
 
-panel_end :: proc() {
+panel_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
 
-row_begin :: proc() {
-    box_begin({children_layout_axis = .HORIZONTAL})
+@(deferred_out = box_end)
+row :: proc() -> bool {
+    return box_begin({children_layout_axis = .HORIZONTAL})
 }
 
-row_end :: proc() {
-    pop(&state.curr_parent)
+@(deferred_out = box_end)
+column :: proc() -> bool {
+    return box_begin({children_layout_axis = .VERTICAL})
 }
 
-column :: proc() {
-    box_begin({children_layout_axis = .VERTICAL})
-}
-
-column_end :: proc() {
-    pop(&state.curr_parent)
-}
-
+@(deferred_out = box_end)
 box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     return box_begin(description)
 }
-box_end :: proc() {
+box_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
 
@@ -249,7 +257,68 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
     return button.clicked
 }
 
-checkbox :: proc(label: string) {
+@(private)
+Checkbox_Data :: struct {
+    value: ^bool, // passed by the user
+}
+
+Checkbox_Padding :: 5
+Checkbox_Square :: 10
+
+@(private)
+checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Checkbox_Data)value
+    //border
+    // append(&state.draw_commands, {clip = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
+    // append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
+    // checkbox_square pos
+    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
+    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
+    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
+
+    // if its clicked then
+    if data.value^ == true {
+        s_r_pos := pos.xy + 1
+        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
+        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
+    }
+
+    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y + OFFSET_Y}
+    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
+}
+
+checkbox :: proc(label: string, value: ^bool) {
+    assert(value != nil)
+    text_size := r.calculate_text_size(label, state.font_size)
+    box_h_size := Size {
+        type       = .FIXED,
+        value      = text_size.x + Checkbox_Padding + Checkbox_Square + 2 * OFFSET_X,
+        strictness = 1,
+    }
+    box_v_size := Size {
+        type       = .FIXED,
+        value      = max(text_size.y, Checkbox_Square) + 2 * OFFSET_Y,
+        strictness = 1,
+    }
+    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE}
+    box_children_layout_axis: Axis_Type = .VERTICAL
+    box_color := state.def_color
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    checkbox := create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    if checkbox.custom_data == nil {
+        checkbox_data := new(Checkbox_Data, state.allocator)
+        checkbox.custom_data = checkbox_data
+        checkbox.custom_draw = checkbox_custom_draw
+    }
+    (cast(^Checkbox_Data)checkbox.custom_data).value = value
+    check_action(checkbox)
+    if checkbox.clicked {
+        value^ = !value^
+    }
 }
 
 label :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
@@ -281,9 +350,11 @@ box_begin :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
-    box_flags := description.flags.? or_else {.NONE, .DRAW_BORDER, .DRAW_RECT}
+    box_flags := description.flags.? or_else {.DRAW_RECT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
+
+    if state.debug do box_flags += {.DRAW_BORDER}
 
     // definitive that desc is filled
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
@@ -313,7 +384,7 @@ check_action :: proc(elem: ^Box) {
             pl.set_cursor_icon(.POINTER)
         }
     }
-    if elem.hovered && state.mouse_btn_press == .BTN_RIGHT {
+    if .PRESSABLE in elem.flags && elem.hovered && state.mouse_btn_press == .BTN_LEFT {
         elem.clicked = true
     }
 }
@@ -438,7 +509,7 @@ calc_sizes :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         calc_sizes(elem.first)
-        text_size := r.calculate_size(elem.label, 12)
+        text_size := r.calculate_text_size(elem.label, state.font_size)
         switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
@@ -541,6 +612,10 @@ pre_order_traversal :: proc(node: ^Box) {
         if .DRAW_TEXT in elem.flags {
             text_pos: [2]f32 = {elem.pos.x + 2, elem.pos.y + 2}
             append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
+        }
+        if .DRAW_CUSTOM in elem.flags {
+            assert(elem.custom_draw != nil, "Set DRAW_CUSTOM but no custom draw proc attached")
+            elem.custom_draw(elem, elem.custom_data)
         }
         pre_order_traversal(elem.first)
     }

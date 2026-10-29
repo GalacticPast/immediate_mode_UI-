@@ -72,7 +72,7 @@ next_tab_stop :: proc(pen_x: f32, font_size: f32) -> f32 {
 }
 
 // no wrapping: only '\n' starts a new line
-calculate_size :: proc(str: string, font_size: f32) -> [2]f32 {
+calculate_text_size :: proc(str: string, font_size: f32) -> [2]f32 {
     line_width: f32 = 0.0
     max_width: f32 = 0.0
     line_count: i32 = 1

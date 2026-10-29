@@ -45,6 +45,7 @@ main :: proc() {
 
     run := true
 
+    res: bool = false
     for run {
         list := pl.get_events()
         e := list.head
@@ -66,39 +67,34 @@ main :: proc() {
             }
         }
 
-        ui.begin_build(list)
-        {
+        if ui.build(list) {
             description := ui.Box_Desc {
                 h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
-            ui.panel_begin("panel_2", description)
-            {
-                ui.row_begin()
-                {
-                    ui.panel_begin("small container")
-                    ui.box(
-                        {
-                            h_size = {type = .FIXED, value = 30},
-                            v_size = {type = .FIXED, value = 25},
-                            color = {0.2, 0.5, 0.8},
-                        },
-                    ); ui.box_end()
-
-                }; ui.row_end()
-
-                ui.panel_begin("large container")
-                {
-                    ui.box(
+            if ui.panel("panel_2", description) {
+                if ui.row() {
+                    if ui.panel("small container") {
+                        if ui.box(
+                            {
+                                h_size = {type = .FIXED, value = 30},
+                                v_size = {type = .FIXED, value = 25},
+                                color = {0.2, 0.5, 0.8},
+                            },
+                        ) {  }
+                    }
+                }
+                if ui.panel("large container") {
+                    if ui.box(
                         {
                             h_size = {type = .FIXED, value = 80},
                             v_size = {type = .FIXED, value = 50},
                             color = {0.8, 0.4, 0.2},
                         },
-                    ); ui.box_end()
-                }; ui.panel_end()
-            }; ui.panel_end()
-        }; ui.build_end()
+                    ) {  }
+                }
+            }
+        }
 
         ui_draw_commands := ui.build_draw_commands()
         // draw
