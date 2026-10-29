@@ -47,11 +47,12 @@ Box :: struct {
     // per build
     // first/last -> children
     prev, next, parent, first, last: ^Box,
+    child_count:                     u32,
     h_size:                          Size, // horizontal size
     v_size:                          Size, // vertical size
     flags:                           Widget_Flags,
     children_layout_axis:            Axis_Type,
-    str:                             string,
+    label:                           string,
 
     //signals
     hovered:                         bool,
@@ -85,7 +86,7 @@ Rect :: struct {
 Draw_Command :: struct {
     clip:  Rect,
     color: [3]f32,
-    str:   string,
+    label: string,
     type:  Draw_Type,
 }
 
@@ -123,6 +124,7 @@ init :: proc() {
     state.def_color = {0.216, 0.247, 0.290}
     state.curr_build_index = 0
 }
+
 deinit :: proc() {
     delete(state.draw_commands)
     delete(state.curr_parent)
@@ -151,7 +153,7 @@ build :: proc(events: pl.Event_List) -> bool {
             case .MOUSE_MOVE:
                 state.mouse_pos = e.pos
                 eat = e
-            case .MOUSE_PRESS:
+            case .MOUSE_BTN_PRESSED:
                 state.mouse_btn_press = e.key
                 eat = e
         }
@@ -178,12 +180,11 @@ build :: proc(events: pl.Event_List) -> bool {
     root.pos.y = 0
 
     append(&state.curr_parent, state.root)
-
+    pl.set_cursor_icon(.DEFAULT)
     return true
 }
 
 end_build :: proc(_: bool) {
-    box_counter = 0
     state.mouse_btn_press = .NONE
 }
 
@@ -210,21 +211,71 @@ panel_end :: proc(open: bool) {
     pop(&state.curr_parent)
 }
 
-box_counter := 0
-
 
 @(deferred_out = box_end)
 row :: proc() -> bool {
-    box({children_layout_axis = .HORIZONTAL})
-    return true
+    return box_begin({children_layout_axis = .HORIZONTAL})
 }
 @(deferred_out = box_end)
 column :: proc() -> bool {
-    box({children_layout_axis = .VERTICAL})
-    return true
+    return box_begin({children_layout_axis = .VERTICAL})
+}
+@(deferred_out = box_end)
+box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+    return box_begin(description)
 }
 
-box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+box_end :: proc(open: bool) {
+    pop(&state.curr_parent)
+}
+
+
+button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+
+    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
+    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
+    box_flags := description.flags.? or_else {.PRESSABLE, .HOVERABLE, .DRAW_TEXT, .DRAW_RECT}
+    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
+    box_color := description.color.? or_else state.def_color
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    button := create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    check_action(button)
+
+    return button.clicked
+}
+
+checkbox :: proc(label: string) {
+}
+
+label :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
+
+    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
+    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
+    box_flags := description.flags.? or_else {.DRAW_TEXT}
+    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
+    box_color := description.color.? or_else state.def_color
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+    // label
+    create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+}
+
+build_draw_commands :: proc() -> []Draw_Command {
+    root := state.root
+    calc_sizes(root)
+    // important so that we only work on the first child index
+    calc_positions(root.first)
+    // welp
+    pre_order_traversal(root)
+    return state.draw_commands[:]
+}
+
+@(private)
+box_begin :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
@@ -239,45 +290,10 @@ box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     box := create_box("", box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
 
     append(&state.curr_parent, box)
-    box_counter += 1
     return true
 }
 
-box_end :: proc(open: bool) {
-    pop(&state.curr_parent)
-}
-
-button :: proc(str: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_flags := description.flags.? or_else {.PRESSABLE, .HOVERABLE, .DRAW_TEXT, .DRAW_RECT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    button := create_box(str, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
-    check_action(button)
-
-    return button.clicked
-}
-
-label :: proc(str: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_flags := description.flags.? or_else {.DRAW_TEXT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-    // label
-    create_box(str, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
-}
-
+@(private)
 mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
     res :=
         f32(m_pos.x) >= box.pos.x &&
@@ -287,12 +303,15 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 
     return res
 }
-
+@(private)
 check_action :: proc(elem: ^Box) {
     if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
         elem.hovered = true
+        if .PRESSABLE in elem.flags {
+            pl.set_cursor_icon(.POINTER)
+        }
     }
-    if state.mouse_btn_press == .BTN_RIGHT {
+    if elem.hovered && state.mouse_btn_press == .BTN_RIGHT {
         elem.clicked = true
     }
 }
@@ -310,6 +329,7 @@ insert_ll :: proc(list: ^Box, node: ^Box) {
         list.first = node
     }
     list.last = node
+    list.child_count += 1
 }
 
 @(private)
@@ -330,9 +350,10 @@ del_ll :: proc(list: ^Box, node: ^Box) {
     }
 }
 @(private)
-hash_key :: proc(str: string, parent_key := u64(0xcbf29ce484222325)) -> u64 {
-    return hash.fnv64a(transmute([]u8)str, parent_key)
+hash_key :: proc(label: string, parent_key := u64(0xcbf29ce484222325)) -> u64 {
+    return hash.fnv64a(transmute([]u8)label, parent_key)
 }
+@(private)
 create_box :: proc(
     title: string,
     h_size: Size,
@@ -383,12 +404,13 @@ create_box :: proc(
         )
     }
 
-    node.str = title
+    node.label = title
     node.h_size = h_size
     node.v_size = v_size
     node.flags = flags
     node.children_layout_axis = children_layout_axis
     node.key = key
+    node.child_count = 0
 
     // invalidate the list
     node.prev, node.next, node.first, node.last = nil, nil, nil, nil
@@ -409,18 +431,27 @@ create_box :: proc(
     return node
 }
 
-
+@(private)
 calc_sizes :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         calc_sizes(elem.first)
-        text_size := r.calculate_size(elem.str, 12)
+        text_size := r.calculate_size(elem.label, 12)
         switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
             case .BASED_ON_CHILDREN_SUM:
-                for child := elem.first; child != nil; child = child.next {
-                    elem.dimensions.x += child.dimensions.x + OFFSET_X
+                switch (elem.children_layout_axis) {
+                    case .VERTICAL:
+                        elem.dimensions.x = 0
+                        for child := elem.first; child != nil; child = child.next {
+                            elem.dimensions.x = max(child.dimensions.x + OFFSET_X * 2, elem.dimensions.x)
+                        }
+                    case .HORIZONTAL:
+                        elem.dimensions.x = OFFSET_X // add the initial offset size
+                        for child := elem.first; child != nil; child = child.next {
+                            elem.dimensions.x += child.dimensions.x + OFFSET_X
+                        }
                 }
             case .BASED_ON_PARENT_PCT:
                 parent: ^Box = elem.parent
@@ -434,8 +465,17 @@ calc_sizes :: proc(node: ^Box) {
             case .BASED_ON_TEXT:
                 elem.dimensions.y = text_size[1] + 5 // 2.5 units in each dir
             case .BASED_ON_CHILDREN_SUM:
-                for child := node.first; child != nil; child = child.next {
-                    elem.dimensions.y += child.dimensions.y + OFFSET_Y
+                switch (elem.children_layout_axis) {
+                    case .VERTICAL:
+                        elem.dimensions.y = OFFSET_Y
+                        for child := elem.first; child != nil; child = child.next {
+                            elem.dimensions.y += child.dimensions.y + OFFSET_Y
+                        }
+                    case .HORIZONTAL:
+                        elem.dimensions.y = 0
+                        for child := elem.first; child != nil; child = child.next {
+                            elem.dimensions.y = max(child.dimensions.y + OFFSET_Y * 2, elem.dimensions.y)
+                        }
                 }
             case .BASED_ON_PARENT_PCT:
                 parent: ^Box = elem.parent
@@ -452,6 +492,7 @@ calc_sizes :: proc(node: ^Box) {
 OFFSET_X :: 3
 OFFSET_Y :: 3
 
+@(private)
 calc_positions :: proc(node: ^Box) {
     if node == nil do return
 
@@ -474,6 +515,7 @@ calc_positions :: proc(node: ^Box) {
     }
 }
 
+@(private)
 pre_order_traversal :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
@@ -496,18 +538,8 @@ pre_order_traversal :: proc(node: ^Box) {
         }
         if .DRAW_TEXT in elem.flags {
             text_pos: [2]f32 = {elem.pos.x + 2, elem.pos.y + 2}
-            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, str = elem.str})
+            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
         }
         pre_order_traversal(elem.first)
     }
-}
-
-build_draw_commands :: proc() -> []Draw_Command {
-    root := state.root
-    calc_sizes(root)
-    // important so that we only work on the first child index
-    calc_positions(root.first)
-    // welp
-    pre_order_traversal(root)
-    return state.draw_commands[:]
 }

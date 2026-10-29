@@ -26,8 +26,11 @@ Platform_Linux_State :: struct {
     xkb_keymap:                  ^wl.xkb_keymap,
     keyboard:                    ^wl.keyboard,
     pointer:                     ^wl.pointer,
+    pointer_serial:              u32,
     wp_viewporter:               ^wl.wp_viewporter,
     wp_fractional_scale_manager: ^wl.wp_fractional_scale_manager_v1,
+    wp_cursor_shape_manager:     ^wl.wp_cursor_shape_manager_v1,
+    wp_cursor_shape_device:      ^wl.wp_cursor_shape_device_v1,
     wp_fractional_scale:         ^wl.wp_fractional_scale_v1,
     wp_viewport:                 ^wl.wp_viewport,
 
@@ -113,8 +116,12 @@ BTN_RIGHT :: 0x111
 BTN_MIDDLE :: 0x112
 
 p_listener: wl.pointer_listener = {
-    enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {  },
-    leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {  },
+    enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {
+        p_l_state.pointer_serial = serial
+    },
+    leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {
+        p_l_state.pointer_serial = 0 //@warn: idk if this is bad or not
+    },
     motion = proc "c" (data: rawptr, pointer: ^wl.pointer, time: u32, x, y: wl.fixed) {
         mouse_x := wl.fixed_to_f32(x)
         mouse_y := wl.fixed_to_f32(y)
@@ -134,7 +141,7 @@ p_listener: wl.pointer_listener = {
         // set the context
         context = ctx^
         e := new(Event) // @perf:
-        e.type = .MOUSE_PRESS
+        e.type = .MOUSE_BTN_RELEASED if state == 0 else .MOUSE_BTN_PRESSED
         e.key = cast(Key_Type)button
         push_event(e)
     },
@@ -165,13 +172,20 @@ w_seat_listener: wl.seat_listener = {
         if mouse == wl.SEAT_CAPABILITY_POINTER {
             p_l_state.pointer = wl.seat_get_pointer(p_l_state.seat)
             wl.add_listener(p_l_state.pointer, &p_listener, nil)
+
+            if p_l_state.wp_cursor_shape_manager != nil {
+                p_l_state.wp_cursor_shape_device = wl.wp_cursor_shape_manager_v1_get_pointer(
+                    p_l_state.wp_cursor_shape_manager,
+                    p_l_state.pointer,
+                )
+            }
         }
 
     },
     name = proc "c" (data: rawptr, seat: ^wl.seat, name: cstring) {  },
 }
 
-
+// @info: such a pain
 r_listener: wl.registry_listener = {
     global = proc "c" (data: rawptr, registry: ^wl.registry, name: u32, interface: cstring, version: u32) {
         switch (interface) {
@@ -207,7 +221,14 @@ r_listener: wl.registry_listener = {
                     &wl.wp_fractional_scale_manager_v1_interface,
                     version,
                 )
-
+            case wl.wp_cursor_shape_manager_v1_interface.name:
+                p_l_state.wp_cursor_shape_manager = cast(^wl.wp_cursor_shape_manager_v1)wl.registry_bind(
+                    registry,
+                    name,
+                    &wl.wp_cursor_shape_manager_v1_interface,
+                    version,
+                )
+            // zamn for real it really came later on
         }
     },
     global_remove = proc "c" (data: rawptr, registry: ^wl.registry, name: u32) {
@@ -318,6 +339,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
         )
         wl.add_listener(p_l_state.wp_fractional_scale, &wp_fractional_scale_listener, &p_l_state)
     }
+
 
     wl.surface_commit(p_l_state.surface)
 
@@ -443,6 +465,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
     egl.SwapBuffers(p_l_state.egl_display, p_l_state.egl_surface)
     wl.display_roundtrip(p_l_state.display)
 
+
     if p_l_state.display_scale != 1.0 {
         wl.egl_window_resize(
             p_l_state.egl_window,
@@ -508,6 +531,15 @@ swap_buffers :: proc() {
 
 get_display_scale :: proc() -> f32 {
     return p_l_state.display_scale
+}
+
+set_cursor_icon :: proc(type: Pointer_Type) {
+    if p_l_state.pointer == nil || p_l_state.wp_cursor_shape_device == nil do return
+    if type == .NONE {     // hide the cursor
+        wl.pointer_set_cursor(p_l_state.pointer, p_l_state.pointer_serial, nil, 0, 0)
+    } else {
+        wl.wp_cursor_shape_device_v1_set_shape(p_l_state.wp_cursor_shape_device, p_l_state.pointer_serial, u32(type))
+    }
 }
 
 // physical framebuffer size

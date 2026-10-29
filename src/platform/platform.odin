@@ -14,13 +14,22 @@ Event_Type :: enum {
     KEY_RELEASE,
     KEY_REPEAT,
     MOUSE_MOVE,
-    MOUSE_PRESS,
+    MOUSE_BTN_PRESSED,
+    MOUSE_BTN_RELEASED,
     MOUSE_SCROLL,
 }
 
 Vector2 :: [2]i32
 
-Mouse_press_type :: enum {}
+//@todo: based on wayland, change later
+Pointer_Type :: enum {
+    NONE     = 0,
+    DEFAULT  = 1,
+    POINTER  = 4,
+    TEXT     = 9,
+    GRAB     = 16,
+    GRABBING = 17,
+}
 
 Key_Type :: enum {
     NONE         = 0x00,

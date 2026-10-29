@@ -72,19 +72,36 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel_2", description) {
-                {
-                    if ui.row() {
-                        if ui.column() {
-                            ui.label("label")
-                            ui.label("label_1")
+                if ui.row() {
+                    if ui.panel("small container") {
+                        if ui.box(
+                            {
+                                h_size = {type = .FIXED, value = 30},
+                                v_size = {type = .FIXED, value = 25},
+                                color = {0.2, 0.5, 0.8},
+                            },
+                        ) {
                         }
-                        if ui.button("button_2", {color = {0.3, 0.3, 0}}) {
-                            fmt.println("button pressed")
-                        }
+                    }
+                    if ui.panel("large container") {
+                        if ui.box(
+                            {
+                                h_size = {type = .FIXED, value = 80},
+                                v_size = {type = .FIXED, value = 50},
+                                color = {0.8, 0.4, 0.2},
+                            },
+                        ) {  }
+                    }
+                }
+                if ui.row() {
+                    if ui.button("first button", {color = {0.3, 0.3, 0}}) {
+                        fmt.println("first button pressed")
+                    }
+                    if ui.button("second button", {color = {0.3, 0.3, 0}}) {
+                        fmt.println("second button pressed")
                     }
                 }
             }
-
         }
 
         ui_draw_commands := ui.build_draw_commands()
@@ -100,7 +117,7 @@ main :: proc() {
                 case .RECTANGLE:
                     r.push({cmd.clip.pos, cmd.clip.dimen}, cmd.color)
                 case .TEXT:
-                    r.push(cmd.str, cmd.clip.pos, cmd.color, 12, 0)
+                    r.push(cmd.label, cmd.clip.pos, cmd.color, 12, 0)
                 case .NONE:
             }
         }
