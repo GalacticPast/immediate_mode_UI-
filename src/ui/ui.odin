@@ -132,8 +132,7 @@ deinit :: proc() {
     mem.dynamic_arena_destroy(&state.arena)
 }
 
-@(deferred_out = end_build)
-build :: proc(events: pl.Event_List) -> bool {
+begin_build :: proc(events: pl.Event_List) {
     state.curr_build_index += 1
 
     clear(&state.draw_commands) // clear it
@@ -181,15 +180,13 @@ build :: proc(events: pl.Event_List) -> bool {
 
     append(&state.curr_parent, state.root)
     pl.set_cursor_icon(.DEFAULT)
-    return true
 }
 
-end_build :: proc(_: bool) {
+build_end :: proc() {
     state.mouse_btn_press = .NONE
 }
 
-@(deferred_out = panel_end)
-panel :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+panel_begin :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
@@ -207,25 +204,30 @@ panel :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -
     return true
 }
 
-panel_end :: proc(open: bool) {
+panel_end :: proc() {
     pop(&state.curr_parent)
 }
 
+row_begin :: proc() {
+    box_begin({children_layout_axis = .HORIZONTAL})
+}
 
-@(deferred_out = box_end)
-row :: proc() -> bool {
-    return box_begin({children_layout_axis = .HORIZONTAL})
+row_end :: proc() {
+    pop(&state.curr_parent)
 }
-@(deferred_out = box_end)
-column :: proc() -> bool {
-    return box_begin({children_layout_axis = .VERTICAL})
+
+column :: proc() {
+    box_begin({children_layout_axis = .VERTICAL})
 }
-@(deferred_out = box_end)
+
+column_end :: proc() {
+    pop(&state.curr_parent)
+}
+
 box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     return box_begin(description)
 }
-
-box_end :: proc(open: bool) {
+box_end :: proc() {
     pop(&state.curr_parent)
 }
 
