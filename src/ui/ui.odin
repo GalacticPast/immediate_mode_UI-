@@ -284,7 +284,7 @@ checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
         append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
     }
 
-    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y + OFFSET_Y}
+    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
 }
 

@@ -83,6 +83,7 @@ main :: proc() {
                             },
                         ) {  }
                     }
+                    ui.checkbox("click me", &res)
                 }
                 if ui.panel("large container") {
                     if ui.box(
@@ -97,8 +98,8 @@ main :: proc() {
         }
 
         ui_draw_commands := ui.build_draw_commands()
-        // draw
 
+        // draw
 
         gl.ClearColor(0, 0, 0, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)

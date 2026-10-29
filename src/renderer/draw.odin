@@ -59,6 +59,11 @@ line_height :: proc() -> f32 {
     return g.ascent - g.descent + g.line_gap
 }
 
+// Distance from the top of a text line to its baseline, in logical pixels.
+text_baseline_offset :: proc(font_size: f32) -> f32 {
+    return d_state.glyphs.ascent * font_size
+}
+
 // bytes outside ASCII (e.g. UTF-8 lead bytes) fall back to '?'
 get_glyph :: proc(c: u8) -> ^text.Glyph_Data {
     code := c
