@@ -151,6 +151,11 @@ Slider_Box_Data :: struct {
 }
 
 @(private)
+Collapsable_Box_Data :: struct {
+    value: ^bool,
+}
+
+@(private)
 state: State
 
 init :: proc() {
@@ -262,6 +267,41 @@ panel_end :: proc(_: bool) {
 }
 
 @(deferred_out = box_end)
+collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+
+    box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1, strictness = 0.5}
+    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
+    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_CUSTOM}
+    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
+    box_color := description.color.? or_else state.def_color
+
+    // definitive that desc is filled
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    collapsable := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+
+    if collapsable.custom_data == nil {
+        collapsable_box_data := new(Collapsable_Box_Data, state.allocator)
+        collapsable.custom_data = collapsable_box_data
+        collapsable.custom_draw = collapsable_custom_draw
+    }
+
+    (cast(^Collapsable_Box_Data)collapsable.custom_data)^ = {
+        value = value,
+    }
+    check_action(collapsable)
+    if collapsable.key == state.active_widget_key {
+        value^ = !value^
+    }
+
+    append(&state.curr_parent, collapsable)
+
+    return true
+}
+
+
+@(deferred_out = box_end)
 row :: proc() -> bool {
     return box_begin({children_layout_axis = .HORIZONTAL})
 }
@@ -300,6 +340,7 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
 slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     assert(value != nil)
     assert(min != max)
+    assert(min < max)
     text_size := r.calculate_text_size(title, state.font_size)
     box_h_size := Size {
         type       = .FIXED,
@@ -333,8 +374,9 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     }
     check_action(slider)
     if slider.key == state.active_widget_key {
-        // @todo
-        value^ = clamp(f32(state.mouse_dx.x) * 0.001 + value^, min, max)
+        total_range := max - min
+        value_change := (f32(state.mouse_dx.x) / box_h_size.value) * total_range
+        value^ = clamp(value_change + value^, min, max)
     }
 }
 
@@ -394,7 +436,7 @@ label :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
 
 build_draw_commands :: proc() -> []Draw_Command {
     root := state.root
-    calc_sizes(root)
+    calc_sizes(root) // hmmm
     // important so that we only work on the first child index
     calc_positions(root.first)
     // welp
@@ -429,6 +471,18 @@ toggle_box :: proc(title: string) -> ^Box {
 @(private)
 normalize_f32 :: proc(value, min, max: f32) -> f32 {
     return (value - min) / (max - min)
+}
+
+@(private)
+collapsable_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Collapsable_Box_Data)value
+    if data.value^ == false {
+        // hmmmmm
+        append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
+
+        t_pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+        append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    }
 }
 
 @(private)
@@ -686,6 +740,41 @@ create_box :: proc(
     }
 
     return node
+}
+
+@(private)
+calc_independent :: proc(node: ^Box) {
+    if node == nil do return
+    for elem := node; elem != nil; elem = elem.next {
+        calc_independent(elem.first)
+        text_size := r.calculate_text_size(elem.title, state.font_size)
+        #partial switch (elem.h_size.type) {
+            case .BASED_ON_TEXT:
+                elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
+            case .FIXED:
+                elem.dimensions.x = elem.h_size.value
+            case .NONE:
+        }
+        #partial switch (elem.v_size.type) {
+            case .BASED_ON_TEXT:
+                elem.dimensions.y = text_size[1] + 5 // 2.5 units in each dir
+            case .FIXED:
+                elem.dimensions.y = elem.v_size.value
+            case .NONE:
+
+        }
+    }
+}
+
+@(private)
+calc_upwards_dependent :: proc(node: ^Box) {
+    if node == nil do return
+
+    for elem := node; elem != nil; elem = elem.next {
+        if (elem.h_size.type == .BASED_ON_PARENT_PCT) {
+        }
+        calc_upwards_dependent(elem.first)
+    }
 }
 
 @(private)

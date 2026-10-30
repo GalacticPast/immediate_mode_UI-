@@ -93,6 +93,9 @@ main :: proc() {
                     ui.radio("high", &option, 2)
                 }
                 ui.slider("red", &red, 0, 1)
+                if ui.collapsable_header("header", &res) {
+
+                }
                 if ui.panel("large container") {
                     if ui.box(
                         {

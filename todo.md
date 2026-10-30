@@ -20,6 +20,7 @@
 - [ ] Check checkbox and text alignment visually using the actual font metrics.
 - [ ] Handle a click on release after a press on the same widget, with cancellation when released outside.
 - [ ] Preserve quick press-and-release interactions when both events arrive in the same build; test with a deliberately slow build loop.
+- [ ] Exclude mouse movement before the press from the slider's initial drag delta when movement and press arrive in the same event batch.
 - [ ] Review hit testing against previous-frame geometry when widgets move or first appear.
 - [ ] Add layout and interaction tests, including sibling sizes and repeated builds.
 - [ ] fix the checkbox text alignement
