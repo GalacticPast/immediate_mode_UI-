@@ -122,9 +122,9 @@ State :: struct {
 
     // transient
     active_widget_key:    u64,
-
-    // this one resets every frame
-    mouse_btn_press:      pl.Key_Type,
+    hot_widget_key:       u64,
+    mouse_btn_press:      pl.Key_Type, // this is short lived
+    mouse_btn_held:       pl.Key_Type,
 }
 
 @(private)
@@ -197,6 +197,11 @@ build :: proc(events: pl.Event_List) -> bool {
                 eat = e
             case .MOUSE_BTN_PRESSED:
                 state.mouse_btn_press = e.key
+                state.mouse_btn_held = e.key
+                eat = e
+            case .MOUSE_BTN_RELEASED:
+                state.mouse_btn_press = .NONE
+                state.mouse_btn_held = .NONE
                 eat = e
         }
     }
@@ -228,6 +233,7 @@ build :: proc(events: pl.Event_List) -> bool {
 }
 
 build_end :: proc(_: bool) {
+    state.hot_widget_key = 0
     state.mouse_btn_press = .NONE
     state.prev_frame_mouse_pos = state.mouse_pos
 }
@@ -305,7 +311,7 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
         value      = text_size.y + 2 * OFFSET_Y,
         strictness = 1,
     }
-    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE, .DRAGGABLE, .HOVERABLE}
+    box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
     box_children_layout_axis: Axis_Type = .VERTICAL
     box_color := state.def_color
 
@@ -326,9 +332,9 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
         max   = max,
     }
     check_action(slider)
-    if slider.clicked {
+    if slider.key == state.active_widget_key {
         // @todo
-        value^ = clamp(f32(state.mouse_dx.x) + value^, min, max)
+        value^ = clamp(f32(state.mouse_dx.x) * 0.001 + value^, min, max)
     }
 }
 
@@ -440,7 +446,6 @@ slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
         },
     )
 
-
     // find the center first
     t_pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
@@ -536,20 +541,36 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 }
 @(private)
 check_action :: proc(elem: ^Box) {
-    if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
-        elem.hovered = true
+    // hot
+    if state.active_widget_key == 0 {     // if there is an interaction going on, skip the following code
+        if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
+            state.hot_widget_key = elem.key
+            elem.hovered = true
+            if .PRESSABLE in elem.flags {
+                pl.set_cursor_icon(.POINTER)
+            } else if .DRAGGABLE in elem.flags {
+                pl.set_cursor_icon(.DRAGGING)
+            }
+        }
+        // active and hot
+        if state.hot_widget_key == elem.key && state.mouse_btn_press == .BTN_LEFT {
+            state.active_widget_key = elem.key
+            elem.clicked = true
+        }
+    }
+    // active
+    if state.active_widget_key == elem.key {
+        if .PRESSABLE in elem.flags {
+            pl.set_cursor_icon(.POINTER)
+        } else if .DRAGGABLE in elem.flags {
+            pl.set_cursor_icon(.DRAGGING)
+        }
     }
 
-    if (elem.hovered || state.active_widget_key == elem.key) && state.mouse_btn_press == .BTN_LEFT {
-        elem.clicked = true
-        state.active_widget_key = elem.key
+    // none
+    if state.mouse_btn_press == .NONE && state.mouse_btn_held == .NONE {
+        state.active_widget_key = 0
     }
-    // if .PRESSABLE in elem.flags {
-    //     pl.set_cursor_icon(.POINTER)
-    // }
-    // if .DRAGGABLE in elem.flags {
-    //     pl.set_cursor_icon(.DRAGGING)
-    // }
 }
 
 

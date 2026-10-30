@@ -19,6 +19,7 @@
 - [x] Add a checkbox with custom drawing and caller-owned state.
 - [ ] Check checkbox and text alignment visually using the actual font metrics.
 - [ ] Handle a click on release after a press on the same widget, with cancellation when released outside.
+- [ ] Preserve quick press-and-release interactions when both events arrive in the same build; test with a deliberately slow build loop.
 - [ ] Review hit testing against previous-frame geometry when widgets move or first appear.
 - [ ] Add layout and interaction tests, including sibling sizes and repeated builds.
 - [ ] fix the checkbox text alignement
