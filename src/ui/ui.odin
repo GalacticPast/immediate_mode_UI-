@@ -3,6 +3,7 @@ package ui
 import pl "../platform"
 import r "../renderer"
 import "base:runtime"
+import "core:fmt"
 import "core:hash"
 import "core:mem"
 import "core:slice"
@@ -99,24 +100,31 @@ Draw_Command :: struct {
 
 @(private)
 State :: struct {
-    arena:            mem.Dynamic_Arena,
-    allocator:        runtime.Allocator, // from arena
-    frame_allocator:  runtime.Allocator,
-    tree:             map[u64]^Box,
-    curr_parent:      [dynamic]^Box,
-    draw_commands:    [dynamic]Draw_Command,
-    def_color:        [3]f32,
-    curr_build_index: u64,
-    font_size:        f32,
-    debug:            bool,
+    arena:                mem.Dynamic_Arena,
+    allocator:            runtime.Allocator, // from arena
+    frame_allocator:      runtime.Allocator,
+    tree:                 map[u64]^Box,
+    curr_parent:          [dynamic]^Box,
+    draw_commands:        [dynamic]Draw_Command,
+    def_color:            [3]f32,
+    curr_build_index:     u64,
+    font_size:            f32,
+    debug:                bool,
 
     // frame specific
-    root:             ^Box,
-    events:           pl.Event_List,
+    root:                 ^Box,
+    events:               pl.Event_List,
+
     // this one gets cached
-    mouse_pos:        [2]i32,
+    prev_frame_mouse_pos: [2]i32, // hmm is this guaranteed though ? what if we were sleeping and just woke up
+    mouse_pos:            [2]i32,
+    mouse_dx:             [2]i32,
+
+    // transient
+    active_widget_key:    u64,
+
     // this one resets every frame
-    mouse_btn_press:  pl.Key_Type,
+    mouse_btn_press:      pl.Key_Type,
 }
 
 @(private)
@@ -133,7 +141,7 @@ Radio_Box_Data :: struct {
     identifier: u32,
 }
 
-Sliderbox_Padding :: 10
+Sliderbox_Padding :: 15
 
 @(private)
 Slider_Box_Data :: struct {
@@ -193,6 +201,7 @@ build :: proc(events: pl.Event_List) -> bool {
         }
     }
 
+    state.mouse_dx = state.mouse_pos - state.prev_frame_mouse_pos
 
     p_w, p_h := pl.get_window_size()
     h_size := Size {
@@ -220,6 +229,7 @@ build :: proc(events: pl.Event_List) -> bool {
 
 build_end :: proc(_: bool) {
     state.mouse_btn_press = .NONE
+    state.prev_frame_mouse_pos = state.mouse_pos
 }
 
 @(deferred_out = panel_end)
@@ -283,6 +293,7 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
 
 slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     assert(value != nil)
+    assert(min != max)
     text_size := r.calculate_text_size(title, state.font_size)
     box_h_size := Size {
         type       = .FIXED,
@@ -301,7 +312,24 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    slider := create_box()
+    slider := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+
+    if slider.custom_data == nil {
+        slider_box_data := new(Slider_Box_Data, state.allocator)
+        slider.custom_data = slider_box_data
+        slider.custom_draw = slider_custom_draw
+    }
+
+    (cast(^Slider_Box_Data)slider.custom_data)^ = {
+        value = value,
+        min   = min,
+        max   = max,
+    }
+    check_action(slider)
+    if slider.clicked {
+        // @todo
+        value^ = clamp(f32(state.mouse_dx.x) + value^, min, max)
+    }
 }
 
 checkbox :: proc(title: string, value: ^bool) {
@@ -392,15 +420,43 @@ toggle_box :: proc(title: string) -> ^Box {
 
     return toggle_box
 }
+@(private)
+normalize_f32 :: proc(value, min, max: f32) -> f32 {
+    return (value - min) / (max - min)
+}
 
 @(private)
 slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Slider_Box_Data)value
 
+    append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
+    normalized_val := normalize_f32(data.value^, data.min, data.max)
+    append(
+        &state.draw_commands,
+        {
+            clip = {elem.pos, {elem.dimensions.x * normalized_val, elem.dimensions.y}},
+            color = {1, 0, 0},
+            type = .RECTANGLE,
+        },
+    )
+
 
     // find the center first
-    t_pos := [2]f32{elem.pos.x + Sliderbox_Padding, elem.pos.y + OFFSET_Y}
+    t_pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+
+    // @todo: this is random, check correctness
+    t_pos.x = elem.dimensions.x - Sliderbox_Padding - OFFSET_X
+    res: f32 = data.value^
+    append(
+        &state.draw_commands,
+        {
+            clip  = {t_pos, {}},
+            type  = .TEXT,
+            color = {1, 1, 1},
+            title = fmt.aprintf("%.2f", res, allocator = state.frame_allocator), // lol
+        },
+    )
 
 }
 
@@ -482,13 +538,18 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 check_action :: proc(elem: ^Box) {
     if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
         elem.hovered = true
-        if .PRESSABLE in elem.flags {
-            pl.set_cursor_icon(.POINTER)
-        }
     }
-    if .PRESSABLE in elem.flags && elem.hovered && state.mouse_btn_press == .BTN_LEFT {
+
+    if (elem.hovered || state.active_widget_key == elem.key) && state.mouse_btn_press == .BTN_LEFT {
         elem.clicked = true
+        state.active_widget_key = elem.key
     }
+    // if .PRESSABLE in elem.flags {
+    //     pl.set_cursor_icon(.POINTER)
+    // }
+    // if .DRAGGABLE in elem.flags {
+    //     pl.set_cursor_icon(.DRAGGING)
+    // }
 }
 
 

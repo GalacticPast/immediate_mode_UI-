@@ -29,6 +29,7 @@ Pointer_Type :: enum {
     TEXT     = 9,
     GRAB     = 16,
     GRABBING = 17,
+    DRAGGING = 26,
 }
 
 Key_Type :: enum {

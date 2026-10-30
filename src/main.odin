@@ -47,6 +47,7 @@ main :: proc() {
 
     res: bool = false
     option: u32 = 0
+    red: f32 = 0
     for run {
         list := pl.get_events()
         e := list.head
@@ -70,10 +71,10 @@ main :: proc() {
 
         if ui.build(list) {
             description := ui.Box_Desc {
-                h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
-            if ui.panel("panel_2", description) {
+            if ui.panel("panel", description) {
                 if ui.row() {
                     if ui.panel("small container") {
                         if ui.box(
@@ -91,6 +92,7 @@ main :: proc() {
                     ui.radio("medium", &option, 1)
                     ui.radio("high", &option, 2)
                 }
+                ui.slider("red", &red, 0, 1)
                 if ui.panel("large container") {
                     if ui.box(
                         {
