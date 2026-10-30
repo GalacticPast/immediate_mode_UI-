@@ -133,6 +133,13 @@ Radio_Box_Data :: struct {
 }
 
 @(private)
+Slider_Box_Data :: struct {
+    value: ^f32,
+    min:   f32,
+    max:   f32,
+}
+
+@(private)
 state: State
 
 init :: proc() {
@@ -253,6 +260,9 @@ box_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
 
+slider :: proc(label: string, value: ^f32, min: f32, max: f32) {
+
+}
 
 button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
@@ -269,31 +279,6 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
     check_action(button)
 
     return button.clicked
-}
-
-
-toggle_box :: proc(title: string) -> ^Box {
-    text_size := r.calculate_text_size(title, state.font_size)
-    box_h_size := Size {
-        type       = .FIXED,
-        value      = text_size.x + Checkbox_Padding + Checkbox_Square + 2 * OFFSET_X,
-        strictness = 1,
-    }
-    box_v_size := Size {
-        type       = .FIXED,
-        value      = max(text_size.y, Checkbox_Square) + 2 * OFFSET_Y,
-        strictness = 1,
-    }
-    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE}
-    box_children_layout_axis: Axis_Type = .VERTICAL
-    box_color := state.def_color
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    toggle_box := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
-
-    return toggle_box
 }
 
 checkbox :: proc(title: string, value: ^bool) {
@@ -336,7 +321,6 @@ radio :: proc(title: string, ind: ^u32, identifier: u32) {
     }
 }
 
-
 label :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
@@ -359,6 +343,31 @@ build_draw_commands :: proc() -> []Draw_Command {
     // welp
     pre_order_traversal(root)
     return state.draw_commands[:]
+}
+
+@(private)
+toggle_box :: proc(title: string) -> ^Box {
+    text_size := r.calculate_text_size(title, state.font_size)
+    box_h_size := Size {
+        type       = .FIXED,
+        value      = text_size.x + Checkbox_Padding + Checkbox_Square + 2 * OFFSET_X,
+        strictness = 1,
+    }
+    box_v_size := Size {
+        type       = .FIXED,
+        value      = max(text_size.y, Checkbox_Square) + 2 * OFFSET_Y,
+        strictness = 1,
+    }
+    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE}
+    box_children_layout_axis: Axis_Type = .VERTICAL
+    box_color := state.def_color
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    toggle_box := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+
+    return toggle_box
 }
 
 @(private)
