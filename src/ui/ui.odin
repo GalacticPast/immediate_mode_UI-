@@ -13,6 +13,7 @@ WIDGET_FLAG :: enum {
     HOVERABLE,
     DRAGGABLE,
     RESIZABLE,
+    GRABBABLE,
     DRAW_TEXT,
     DRAW_RECT,
     DRAW_BORDER,
@@ -131,6 +132,8 @@ Radio_Box_Data :: struct {
     value:      ^u32,
     identifier: u32,
 }
+
+Sliderbox_Padding :: 10
 
 @(private)
 Slider_Box_Data :: struct {
@@ -260,9 +263,6 @@ box_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
 
-slider :: proc(label: string, value: ^f32, min: f32, max: f32) {
-
-}
 
 button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
 
@@ -279,6 +279,29 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
     check_action(button)
 
     return button.clicked
+}
+
+slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
+    assert(value != nil)
+    text_size := r.calculate_text_size(title, state.font_size)
+    box_h_size := Size {
+        type       = .FIXED,
+        value      = text_size.x + 2 * Sliderbox_Padding + 2 * OFFSET_X,
+        strictness = 1,
+    }
+    box_v_size := Size {
+        type       = .FIXED,
+        value      = text_size.y + 2 * OFFSET_Y,
+        strictness = 1,
+    }
+    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE, .DRAGGABLE, .HOVERABLE}
+    box_children_layout_axis: Axis_Type = .VERTICAL
+    box_color := state.def_color
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    slider := create_box()
 }
 
 checkbox :: proc(title: string, value: ^bool) {
@@ -368,6 +391,17 @@ toggle_box :: proc(title: string) -> ^Box {
     toggle_box := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
 
     return toggle_box
+}
+
+@(private)
+slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Slider_Box_Data)value
+
+
+    // find the center first
+    t_pos := [2]f32{elem.pos.x + Sliderbox_Padding, elem.pos.y + OFFSET_Y}
+    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+
 }
 
 @(private)
