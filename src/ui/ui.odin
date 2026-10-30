@@ -53,7 +53,7 @@ Box :: struct {
     v_size:                          Size, // vertical size
     flags:                           Widget_Flags,
     children_layout_axis:            Axis_Type,
-    label:                           string,
+    title:                           string,
 
     // atached every_frame
     custom_draw:                     proc(elem: ^Box, value: rawptr),
@@ -91,7 +91,7 @@ Rect :: struct {
 Draw_Command :: struct {
     clip:  Rect,
     color: [3]f32,
-    label: string,
+    title: string,
     type:  Draw_Type,
 }
 
@@ -116,6 +116,20 @@ State :: struct {
     mouse_pos:        [2]i32,
     // this one resets every frame
     mouse_btn_press:  pl.Key_Type,
+}
+
+@(private)
+Check_Box_Data :: struct {
+    value: ^bool, // passed by the user
+}
+
+Checkbox_Padding :: 5
+Checkbox_Square :: 10
+
+@(private)
+Radio_Box_Data :: struct {
+    value:      ^u32,
+    identifier: u32,
 }
 
 @(private)
@@ -257,40 +271,9 @@ button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) 
     return button.clicked
 }
 
-@(private)
-Checkbox_Data :: struct {
-    value: ^bool, // passed by the user
-}
 
-Checkbox_Padding :: 5
-Checkbox_Square :: 10
-
-@(private)
-checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
-    data := cast(^Checkbox_Data)value
-    //border
-    // append(&state.draw_commands, {clip = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
-    // append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
-    // checkbox_square pos
-    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
-    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
-    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
-    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
-
-    // if its clicked then
-    if data.value^ == true {
-        s_r_pos := pos.xy + 1
-        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
-        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
-    }
-
-    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
-    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
-}
-
-checkbox :: proc(label: string, value: ^bool) {
-    assert(value != nil)
-    text_size := r.calculate_text_size(label, state.font_size)
+toggle_box :: proc(title: string) -> ^Box {
+    text_size := r.calculate_text_size(title, state.font_size)
     box_h_size := Size {
         type       = .FIXED,
         value      = text_size.x + Checkbox_Padding + Checkbox_Square + 2 * OFFSET_X,
@@ -308,20 +291,53 @@ checkbox :: proc(label: string, value: ^bool) {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    checkbox := create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    toggle_box := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+
+    return toggle_box
+}
+
+checkbox :: proc(title: string, value: ^bool) {
+    assert(value != nil)
+    checkbox := toggle_box(title)
+
     if checkbox.custom_data == nil {
-        checkbox_data := new(Checkbox_Data, state.allocator)
-        checkbox.custom_data = checkbox_data
+        check_box_data := new(Check_Box_Data, state.allocator)
+        checkbox.custom_data = check_box_data
         checkbox.custom_draw = checkbox_custom_draw
     }
-    (cast(^Checkbox_Data)checkbox.custom_data).value = value
+    (cast(^Check_Box_Data)checkbox.custom_data).value = value
+
     check_action(checkbox)
+
     if checkbox.clicked {
         value^ = !value^
     }
 }
 
-label :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
+radio :: proc(title: string, ind: ^u32, identifier: u32) {
+    assert(ind != nil)
+    radio := toggle_box(title)
+
+    if radio.custom_data == nil {
+        radio_box_data := new(Radio_Box_Data, state.allocator)
+        radio.custom_data = radio_box_data
+    }
+    (cast(^Radio_Box_Data)radio.custom_data)^ = {
+        value      = ind,
+        identifier = identifier,
+    }
+
+    radio.custom_draw = radio_custom_draw
+
+    check_action(radio)
+    if radio.clicked {
+        data: ^Radio_Box_Data = cast(^Radio_Box_Data)radio.custom_data
+        data.value^ = identifier
+    }
+}
+
+
+label :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
@@ -331,8 +347,8 @@ label :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
 
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-    // label
-    create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    // title
+    create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
 }
 
 build_draw_commands :: proc() -> []Draw_Command {
@@ -343,6 +359,49 @@ build_draw_commands :: proc() -> []Draw_Command {
     // welp
     pre_order_traversal(root)
     return state.draw_commands[:]
+}
+
+@(private)
+radio_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Radio_Box_Data)value
+
+    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
+    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
+    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
+
+    // if the clicked value's id matches the identifier
+    if data.value^ == data.identifier {
+        s_r_pos := pos.xy + 1
+        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
+        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
+    }
+
+    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
+    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+}
+
+@(private)
+checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Check_Box_Data)value
+    //border
+    // append(&state.draw_commands, {clip = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
+    // append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
+    // checkbox_square pos
+    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
+    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
+    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
+
+    // if its clicked then
+    if data.value^ == true {
+        s_r_pos := pos.xy + 1
+        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
+        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
+    }
+
+    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
+    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
@@ -477,7 +536,7 @@ create_box :: proc(
         )
     }
 
-    node.label = title
+    node.title = title
     node.h_size = h_size
     node.v_size = v_size
     node.flags = flags
@@ -509,7 +568,7 @@ calc_sizes :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         calc_sizes(elem.first)
-        text_size := r.calculate_text_size(elem.label, state.font_size)
+        text_size := r.calculate_text_size(elem.title, state.font_size)
         switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
@@ -611,7 +670,7 @@ pre_order_traversal :: proc(node: ^Box) {
         }
         if .DRAW_TEXT in elem.flags {
             text_pos: [2]f32 = {elem.pos.x + 2, elem.pos.y + 2}
-            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, label = elem.label})
+            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
         }
         if .DRAW_CUSTOM in elem.flags {
             assert(elem.custom_draw != nil, "Set DRAW_CUSTOM but no custom draw proc attached")

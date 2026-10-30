@@ -46,6 +46,7 @@ main :: proc() {
     run := true
 
     res: bool = false
+    option: u32 = 0
     for run {
         list := pl.get_events()
         e := list.head
@@ -85,6 +86,11 @@ main :: proc() {
                     }
                     ui.checkbox("click me", &res)
                 }
+                if ui.column() {
+                    ui.radio("low", &option, 0)
+                    ui.radio("medium", &option, 1)
+                    ui.radio("high", &option, 2)
+                }
                 if ui.panel("large container") {
                     if ui.box(
                         {
@@ -110,7 +116,7 @@ main :: proc() {
                 case .RECTANGLE:
                     r.push({cmd.clip.pos, cmd.clip.dimen}, cmd.color)
                 case .TEXT:
-                    r.push(cmd.label, cmd.clip.pos, cmd.color, 12, 0)
+                    r.push(cmd.title, cmd.clip.pos, cmd.color, 12, 0)
                 case .NONE:
             }
         }
