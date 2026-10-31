@@ -48,6 +48,7 @@ main :: proc() {
     res: bool = false
     option: u32 = 0
     red: f32 = 0
+    header: bool = false
     for run {
         list := pl.get_events()
         e := list.head
@@ -75,6 +76,39 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel", description) {
+                if ui.collapsable_header("header", &header) {
+                    if ui.panel("large container") {
+                        if ui.box(
+                            {
+                                h_size = {type = .FIXED, value = 80},
+                                v_size = {type = .FIXED, value = 50},
+                                color = {0.8, 0.4, 0.2},
+                            },
+                        ) {
+                            if ui.button("button") {
+                            }
+                        }
+                    }
+                }
+                if ui.panel(
+                    "panel_2",
+                    {
+                        h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                        v_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                        color = {0, 1, 0},
+                    },
+                ) {
+                    if ui.panel(
+                        "panel_3",
+                        {
+                            h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                            v_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                            color = {1, 0, 0},
+                        },
+                    ) {
+
+                    }
+                }
                 if ui.row() {
                     if ui.panel("small container") {
                         if ui.box(
@@ -93,18 +127,6 @@ main :: proc() {
                     ui.radio("high", &option, 2)
                 }
                 ui.slider("red", &red, 0, 1)
-                if ui.collapsable_header("header", &res) {
-
-                }
-                if ui.panel("large container") {
-                    if ui.box(
-                        {
-                            h_size = {type = .FIXED, value = 80},
-                            v_size = {type = .FIXED, value = 50},
-                            color = {0.8, 0.4, 0.2},
-                        },
-                    ) {  }
-                }
             }
         }
 

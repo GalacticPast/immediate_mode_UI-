@@ -8,6 +8,14 @@ import "core:hash"
 import "core:mem"
 import "core:slice"
 
+
+Text_Align_Flag :: enum {
+    NONE,
+    CENTER,
+    LEFT,
+    RIGHT,
+}
+
 WIDGET_FLAG :: enum {
     NONE,
     PRESSABLE,
@@ -54,6 +62,7 @@ Box :: struct {
     h_size:                          Size, // horizontal size
     v_size:                          Size, // vertical size
     flags:                           Widget_Flags,
+    text_align_flag:                 Text_Align_Flag,
     children_layout_axis:            Axis_Type,
     title:                           string,
 
@@ -77,6 +86,7 @@ Box_Desc :: struct {
     v_size:               Maybe(Size),
     flags:                Maybe(Widget_Flags),
     children_layout_axis: Maybe(Axis_Type),
+    text_algin_flag:      Maybe(Text_Align_Flag),
     color:                Maybe([3]f32),
 }
 
@@ -227,7 +237,7 @@ build :: proc(events: pl.Event_List) -> bool {
     color := [3]f32{1, 1, 1}
 
 
-    root := create_box("root", h_size, v_size, flags, children_layout_axis, color)
+    root := create_box("root", h_size, v_size, flags, .NONE, children_layout_axis, color)
     state.root = root
     root.pos.x = 0
     root.pos.y = 0
@@ -244,19 +254,19 @@ build_end :: proc(_: bool) {
 }
 
 @(deferred_out = panel_end)
-panel :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+panel :: proc(title: string, description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
-
+    text_align := description.text_algin_flag.? or_else .NONE
     // definitive that desc is filled
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    panel := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    panel := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
     append(&state.curr_parent, panel)
 
     return true
@@ -266,20 +276,43 @@ panel_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
 
-@(deferred_out = box_end)
-collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+@(deferred_out = collapsable_header_end)
+collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
 
+    // the big container
+    box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0.5}
+    box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1} // hmm
+    box_flags := description.flags.? or_else {.NONE}
+    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
+    box_color := description.color.? or_else state.def_color
+    text_align := description.text_algin_flag.? or_else .CENTER
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    container := create_box("", box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
+
+    // title
     box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1, strictness = 0.5}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
     box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_CUSTOM}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
+    text_align := description.text_algin_flag.? or_else .CENTER
 
     // definitive that desc is filled
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    collapsable := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    collapsable := create_box(
+        title,
+        box_h_size,
+        box_v_size,
+        box_flags,
+        text_align,
+        box_children_layout_axis,
+        box_color,
+    )
 
     if collapsable.custom_data == nil {
         collapsable_box_data := new(Collapsable_Box_Data, state.allocator)
@@ -290,14 +323,35 @@ collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{
     (cast(^Collapsable_Box_Data)collapsable.custom_data)^ = {
         value = value,
     }
+
     check_action(collapsable)
-    if collapsable.key == state.active_widget_key {
+
+    if collapsable.clicked {
         value^ = !value^
     }
-
     append(&state.curr_parent, collapsable)
 
+    if value^ == true {
+        spacer()
+        box_begin({children_layout_axis = .VERTICAL})
+    }
+
+    return value^
+}
+
+@(deferred_out = box_end)
+spacer :: proc() -> bool {
+    box_begin(
+        {h_size = {type = .BASED_ON_PARENT_PCT, value = 1}, v_size = {type = .FIXED, value = 50}, flags = {.NONE}},
+    )
     return true
+}
+
+collapsable_header_end :: proc(open: bool) {
+    if open {
+        box_end(open)
+    }
+    box_end(open)
 }
 
 
@@ -312,7 +366,7 @@ column :: proc() -> bool {
 }
 
 @(deferred_out = box_end)
-box :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+box :: proc(description := Box_Desc{}) -> bool {
     return box_begin(description)
 }
 box_end :: proc(_: bool) {
@@ -320,18 +374,19 @@ box_end :: proc(_: bool) {
 }
 
 
-button :: proc(label: string, description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+button :: proc(label: string, description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
     box_flags := description.flags.? or_else {.PRESSABLE, .HOVERABLE, .DRAW_TEXT, .DRAW_RECT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
+    text_align := description.text_algin_flag.? or_else .CENTER
 
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    button := create_box(label, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    button := create_box(label, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
     check_action(button)
 
     return button.clicked
@@ -342,6 +397,7 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     assert(min != max)
     assert(min < max)
     text_size := r.calculate_text_size(title, state.font_size)
+
     box_h_size := Size {
         type       = .FIXED,
         value      = text_size.x + 2 * Sliderbox_Padding + 2 * OFFSET_X,
@@ -355,11 +411,12 @@ slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
     box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
     box_children_layout_axis: Axis_Type = .VERTICAL
     box_color := state.def_color
+    text_align: Text_Align_Flag = .CENTER
 
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    slider := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    slider := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 
     if slider.custom_data == nil {
         slider_box_data := new(Slider_Box_Data, state.allocator)
@@ -420,23 +477,28 @@ radio :: proc(title: string, ind: ^u32, identifier: u32) {
     }
 }
 
-label :: proc(title: string, description := Box_Desc{nil, nil, nil, nil, nil}) {
+label :: proc(title: string, description := Box_Desc{}) {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
     box_flags := description.flags.? or_else {.DRAW_TEXT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
+    text_align := description.text_algin_flag.? or_else .CENTER
 
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
     // title
-    create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 }
 
 build_draw_commands :: proc() -> []Draw_Command {
     root := state.root
-    calc_sizes(root) // hmmm
+    calc_size_independent(root)         // hmmm
+    calc_size_upwards_dependent(root)   // hmmm
+    calc_size_downwards_dependent(root) // hmmm
+    //@todo: missing shrinking
+
     // important so that we only work on the first child index
     calc_positions(root.first)
     // welp
@@ -460,11 +522,12 @@ toggle_box :: proc(title: string) -> ^Box {
     box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE}
     box_children_layout_axis: Axis_Type = .VERTICAL
     box_color := state.def_color
+    text_align: Text_Align_Flag = .CENTER
 
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    toggle_box := create_box(title, box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    toggle_box := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 
     return toggle_box
 }
@@ -474,15 +537,42 @@ normalize_f32 :: proc(value, min, max: f32) -> f32 {
 }
 
 @(private)
+text_align :: proc(elem: ^Box) -> [2]f32 {
+    // @perf: cache the text_size
+    text_size := r.calculate_text_size(elem.title, state.font_size)
+    // hmmm
+    pos: [2]f32 = {}
+    switch (elem.text_align_flag) {
+        case .LEFT:
+            pos = {elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+        case .CENTER:
+            text_center_p_x := elem.pos.x + (text_size.x / 2)
+            box_center_p_x := elem.pos.x + (elem.dimensions.x / 2)
+            pos = {elem.pos.x + abs(text_center_p_x - box_center_p_x), elem.pos.y + OFFSET_Y}
+        case .RIGHT:
+            pos = {elem.pos.x + elem.dimensions.x - text_size.x - OFFSET_X, elem.pos.y + OFFSET_Y}
+        case .NONE:
+    }
+
+    return pos
+}
+
+@(private)
 collapsable_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Collapsable_Box_Data)value
-    if data.value^ == false {
-        // hmmmmm
-        append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
-
-        t_pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
-        append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    if data.value^ == true {
     }
+    r_color := [3]f32{1, 0, 0}
+    if elem.hovered {
+        r_color = {1, 1, 0}
+    }
+    text_size := r.calculate_text_size(elem.title, state.font_size)
+    append(
+        &state.draw_commands,
+        {clip = {elem.pos, {elem.dimensions.x, text_size.y + 2 * OFFSET_Y}}, color = r_color, type = .RECTANGLE},
+    )
+    t_pos := text_align(elem)
+    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
@@ -501,22 +591,13 @@ slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
     )
 
     // find the center first
-    t_pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
+    title := fmt.aprintf("%s %.2f", elem.title, data.value^, allocator = state.frame_allocator)
+    // should I do this ? I think this will kind of fuck it up
+    temp := elem.title
+    elem.title = title
+    t_pos := text_align(elem)
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-
-    // @todo: this is random, check correctness
-    t_pos.x = elem.dimensions.x - Sliderbox_Padding - OFFSET_X
-    res: f32 = data.value^
-    append(
-        &state.draw_commands,
-        {
-            clip  = {t_pos, {}},
-            type  = .TEXT,
-            color = {1, 1, 1},
-            title = fmt.aprintf("%.2f", res, allocator = state.frame_allocator), // lol
-        },
-    )
-
+    elem.title = temp
 }
 
 @(private)
@@ -535,7 +616,8 @@ radio_custom_draw :: proc(elem: ^Box, value: rawptr) {
         append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
     }
 
-    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
+    t_pos := text_align(elem)
+    t_pos.x += Checkbox_Padding
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
@@ -558,12 +640,13 @@ checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
         append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
     }
 
-    t_pos := [2]f32{elem.pos.x + Checkbox_Square + Checkbox_Padding + OFFSET_X, elem.pos.y - OFFSET_Y}
+    t_pos := text_align(elem)
+    t_pos.x += Checkbox_Padding
     append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
-box_begin :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
+box_begin :: proc(description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
@@ -577,7 +660,7 @@ box_begin :: proc(description := Box_Desc{nil, nil, nil, nil, nil}) -> bool {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    box := create_box("", box_h_size, box_v_size, box_flags, box_children_layout_axis, box_color)
+    box := create_box("", box_h_size, box_v_size, box_flags, .NONE, box_children_layout_axis, box_color)
 
     append(&state.curr_parent, box)
     return true
@@ -670,6 +753,7 @@ create_box :: proc(
     h_size: Size,
     v_size: Size,
     flags: Widget_Flags,
+    text_align_flag: Text_Align_Flag,
     children_layout_axis: Axis_Type,
     color: [3]f32,
 ) -> ^Box {
@@ -719,6 +803,7 @@ create_box :: proc(
     node.h_size = h_size
     node.v_size = v_size
     node.flags = flags
+    node.text_align_flag = text_align_flag
     node.children_layout_axis = children_layout_axis
     node.key = key
     node.child_count = 0
@@ -743,10 +828,10 @@ create_box :: proc(
 }
 
 @(private)
-calc_independent :: proc(node: ^Box) {
+calc_size_independent :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
-        calc_independent(elem.first)
+        calc_size_independent(elem.first)
         text_size := r.calculate_text_size(elem.title, state.font_size)
         #partial switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
@@ -767,70 +852,70 @@ calc_independent :: proc(node: ^Box) {
 }
 
 @(private)
-calc_upwards_dependent :: proc(node: ^Box) {
+calc_size_upwards_dependent :: proc(node: ^Box) {
     if node == nil do return
 
     for elem := node; elem != nil; elem = elem.next {
+        // lol
         if (elem.h_size.type == .BASED_ON_PARENT_PCT) {
+            // could be that the dimenions are still 0 because no parent with type fixed was found
+            // well root is always fixed so
+            for parent := elem.parent; parent != nil; parent = parent.parent {
+                if parent.h_size.type == .BASED_ON_CHILDREN_SUM || parent.h_size.type == .NONE {
+                    continue
+                }
+                elem.dimensions.x = parent.dimensions.x * elem.h_size.value
+                break
+            }
         }
-        calc_upwards_dependent(elem.first)
+        if (elem.v_size.type == .BASED_ON_PARENT_PCT) {
+            // could be tvat the dimenions are still 0 because no parent with type fixed was found
+            // well root is always fixed so
+            for parent := elem.parent; parent != nil; parent = parent.parent {
+                if parent.v_size.type == .BASED_ON_CHILDREN_SUM || parent.v_size.type == .NONE {
+                    continue
+                }
+                elem.dimensions.y = parent.dimensions.y * elem.v_size.value
+                break
+            }
+        }
+        calc_size_upwards_dependent(elem.first)
     }
 }
 
 @(private)
-calc_sizes :: proc(node: ^Box) {
+calc_size_downwards_dependent :: proc(node: ^Box) {
     if node == nil do return
-    for elem := node; elem != nil; elem = elem.next {
-        calc_sizes(elem.first)
-        text_size := r.calculate_text_size(elem.title, state.font_size)
-        switch (elem.h_size.type) {
-            case .BASED_ON_TEXT:
-                elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
-            case .BASED_ON_CHILDREN_SUM:
-                switch (elem.children_layout_axis) {
-                    case .VERTICAL:
-                        elem.dimensions.x = 0
-                        for child := elem.first; child != nil; child = child.next {
-                            elem.dimensions.x = max(child.dimensions.x + OFFSET_X * 2, elem.dimensions.x)
-                        }
-                    case .HORIZONTAL:
-                        elem.dimensions.x = OFFSET_X // add the initial offset size
-                        for child := elem.first; child != nil; child = child.next {
-                            elem.dimensions.x += child.dimensions.x + OFFSET_X
-                        }
-                }
-            case .BASED_ON_PARENT_PCT:
-                parent: ^Box = elem.parent
-                assert(parent.h_size.type == .FIXED) // this should be fixed
-                elem.dimensions.x = parent.h_size.value * elem.h_size.value
-            case .FIXED:
-                elem.dimensions.x = elem.h_size.value
-            case .NONE:
-        }
-        switch (elem.v_size.type) {
-            case .BASED_ON_TEXT:
-                elem.dimensions.y = text_size[1] + 5 // 2.5 units in each dir
-            case .BASED_ON_CHILDREN_SUM:
-                switch (elem.children_layout_axis) {
-                    case .VERTICAL:
-                        elem.dimensions.y = OFFSET_Y
-                        for child := elem.first; child != nil; child = child.next {
-                            elem.dimensions.y += child.dimensions.y + OFFSET_Y
-                        }
-                    case .HORIZONTAL:
-                        elem.dimensions.y = 0
-                        for child := elem.first; child != nil; child = child.next {
-                            elem.dimensions.y = max(child.dimensions.y + OFFSET_Y * 2, elem.dimensions.y)
-                        }
-                }
-            case .BASED_ON_PARENT_PCT:
-                parent: ^Box = elem.parent
-                assert(parent.v_size.type == .FIXED) // this should be fixed
-                elem.dimensions.y = parent.v_size.value * elem.v_size.value
-            case .FIXED:
-                elem.dimensions.y = elem.v_size.value
-            case .NONE:
 
+    for elem := node; elem != nil; elem = elem.next {
+        calc_size_downwards_dependent(elem.first)
+        if elem.h_size.type == .BASED_ON_CHILDREN_SUM {
+            switch (elem.children_layout_axis) {
+                case .VERTICAL:
+                    elem.dimensions.x = 0
+                    for child := elem.first; child != nil; child = child.next {
+                        elem.dimensions.x = max(child.dimensions.x + OFFSET_X * 2, elem.dimensions.x)
+                    }
+                case .HORIZONTAL:
+                    elem.dimensions.x = OFFSET_X // add the initial offset size
+                    for child := elem.first; child != nil; child = child.next {
+                        elem.dimensions.x += child.dimensions.x + OFFSET_X
+                    }
+            }
+        }
+        if elem.v_size.type == .BASED_ON_CHILDREN_SUM {
+            switch (elem.children_layout_axis) {
+                case .VERTICAL:
+                    elem.dimensions.y = OFFSET_Y
+                    for child := elem.first; child != nil; child = child.next {
+                        elem.dimensions.y += child.dimensions.y + OFFSET_Y
+                    }
+                case .HORIZONTAL:
+                    elem.dimensions.y = 0
+                    for child := elem.first; child != nil; child = child.next {
+                        elem.dimensions.y = max(child.dimensions.y + OFFSET_Y * 2, elem.dimensions.y)
+                    }
+            }
         }
     }
 }
@@ -843,22 +928,24 @@ calc_positions :: proc(node: ^Box) {
     if node == nil do return
 
     parent := node.parent
-    pen_pos: [2]f32 = {parent.pos.x + OFFSET_X, parent.pos.y + OFFSET_Y}
+    pen_pos: [2]f32 = {parent.pos.x, parent.pos.y}
+
     // @warn: we kinda dont clip anything here so
     for elem := node; elem != nil; elem = elem.next {
-        elem.pos.x = pen_pos.x
-        elem.pos.y = pen_pos.y
+        elem.pos.x = pen_pos.x + OFFSET_X
+        elem.pos.y = pen_pos.y + OFFSET_Y
 
         switch (parent.children_layout_axis) {
             case .VERTICAL:
-                pen_pos.y += elem.dimensions.y + OFFSET_Y
+                pen_pos.y += elem.dimensions.y // hmm
             case .HORIZONTAL:
-                pen_pos.x += elem.dimensions.x + OFFSET_X
+                pen_pos.x += elem.dimensions.x // hmm
             case:
                 assert(false, "Children layout not specified.")
         }
         calc_positions(elem.first)
     }
+    return
 }
 
 @(private)
@@ -883,7 +970,7 @@ pre_order_traversal :: proc(node: ^Box) {
             append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = color, type = .RECTANGLE})
         }
         if .DRAW_TEXT in elem.flags {
-            text_pos: [2]f32 = {elem.pos.x + 2, elem.pos.y + 2}
+            text_pos := text_align(elem)
             append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
         }
         if .DRAW_CUSTOM in elem.flags {
