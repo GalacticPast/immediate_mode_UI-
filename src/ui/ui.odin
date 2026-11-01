@@ -278,24 +278,13 @@ panel_end :: proc(_: bool) {
 
 @(deferred_out = collapsable_header_end)
 collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
-
-    // the big container
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0.5}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1} // hmm
-    box_flags := description.flags.? or_else {.NONE}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .CENTER
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    container := create_box("", box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
+    // parent_which_encloses_all
+    box_begin()
 
     // title
     box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1, strictness = 0.5}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
-    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_CUSTOM}
+    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_TEXT, .DRAW_RECT}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
     text_align := description.text_algin_flag.? or_else .CENTER
@@ -304,35 +293,16 @@ collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    collapsable := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
+    title_box := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 
-    if collapsable.custom_data == nil {
-        collapsable_box_data := new(Collapsable_Box_Data, state.allocator)
-        collapsable.custom_data = collapsable_box_data
-        collapsable.custom_draw = collapsable_custom_draw
-    }
+    check_action(title_box)
 
-    (cast(^Collapsable_Box_Data)collapsable.custom_data)^ = {
-        value = value,
-    }
-
-    check_action(collapsable)
-
-    if collapsable.clicked {
+    if title_box.clicked {
         value^ = !value^
     }
-    append(&state.curr_parent, collapsable)
 
     if value^ == true {
-        spacer()
+        // content
         box_begin({children_layout_axis = .VERTICAL})
     }
 
