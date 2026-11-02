@@ -19,14 +19,11 @@ Rect :: struct {
 }
 
 Draw_State :: struct {
-    glyphs:      ^text.Glyphs,
+    glyphs:     ^text.Glyphs,
     // Buffers retain their storage across frames and are released in deinit.
-    // for the glyphs
-    g_instances: [dynamic]Draw_Instance,
-    // for the sdf boxes
-    b_instances: [dynamic]Draw_Instance,
+
     // the final buffer that gets uploaded to the gpu
-    gpu_buffer:  [dynamic]Draw_Instance,
+    gpu_buffer: [dynamic]Draw_Instance,
 }
 
 d_state: Draw_State
@@ -38,14 +35,10 @@ init :: proc(allocator := context.allocator) {
     d_state.glyphs = text.get_current_font()
     // increased the backing buffer so that the array wont need to keep resizing,
     // could introduce a limit later on
-    d_state.g_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
-    d_state.b_instances = make([dynamic]Draw_Instance, 0, 1024, allocator)
     d_state.gpu_buffer = make([dynamic]Draw_Instance, 0, 4098, allocator)
 }
 deinit :: proc() {
     backend_deinit()
-    delete(d_state.g_instances)
-    delete(d_state.b_instances)
     delete(d_state.gpu_buffer)
     d_state = {}
 }
@@ -155,7 +148,7 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             instance.horizontal_band_locations[k] = {f32(h0.x), f32(h0.y), f32(h1.x), f32(h1.y)}
             instance.vertical_band_locations[k] = {f32(v0.x), f32(v0.y), f32(v1.x), f32(v1.y)}
         }
-        append(&d_state.g_instances, instance)
+        append(&d_state.gpu_buffer, instance)
         pen_pos.x += g.advance * font_px
     }
 }
@@ -172,16 +165,11 @@ push_rect :: proc(r: Rect, color: [3]f32) {
         horizontal_band_locations = {},
         vertical_band_locations   = {},
     }
-    append(&d_state.b_instances, instance)
+    append(&d_state.gpu_buffer, instance)
 }
 
 end_command :: proc() {
-    // first append all of the box instances
-    append(&d_state.gpu_buffer, ..d_state.b_instances[:])
-    // append all of the glyph instances
-    append(&d_state.gpu_buffer, ..d_state.g_instances[:])
-    clear(&d_state.b_instances)
-    clear(&d_state.g_instances)
+    // does nothing
 }
 
 render :: proc() {

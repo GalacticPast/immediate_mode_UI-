@@ -77,6 +77,7 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel", description) {
+                ui.button("overlap")
                 if ui.row() {
                     if ui.dropdown("Menu", &dropdown) {
                         if ui.button("Save") {

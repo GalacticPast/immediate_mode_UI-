@@ -138,6 +138,7 @@ State :: struct {
     // transient
     active_widget_key:    u64,
     hot_widget_key:       u64,
+    inside_floating:      bool,        // @temp:
     mouse_btn_press:      pl.Key_Type, // this is short lived
     mouse_btn_held:       pl.Key_Type,
 }
@@ -317,7 +318,6 @@ collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{
 
 @(deferred_out = dropdown_end)
 dropdown :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
-    box_begin({flags = {.FLOATING}, children_layout_axis = .VERTICAL})
 
     // title
     box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
@@ -334,14 +334,15 @@ dropdown :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool
     title_box := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 
     check_action(title_box)
+    append(&state.curr_parent, title_box)
 
     if title_box.clicked {
         value^ = !value^
     }
 
     if value^ == true {
-        // floating window
-        box_begin({children_layout_axis = .VERTICAL})
+        // content_window
+        box_begin({flags = {.FLOATING}, children_layout_axis = .VERTICAL})
     }
 
     return value^
@@ -696,7 +697,7 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 @(private)
 check_action :: proc(elem: ^Box) {
     // hot
-    if state.active_widget_key == 0 {     // if there is an interaction going on, skip the following code
+    if state.active_widget_key == 0 && state.hot_widget_key == 0 {     // if there is an interaction going on or a key is already being hovered , skip the following code
         if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
             state.hot_widget_key = elem.key
             elem.hovered = true
