@@ -310,7 +310,7 @@ collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{
 
     if value^ == true {
         // content
-        box_begin({children_layout_axis = .VERTICAL})
+        box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
     }
 
     return value^
@@ -333,16 +333,17 @@ dropdown :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool
 
     title_box := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
 
-    check_action(title_box)
     append(&state.curr_parent, title_box)
 
+    check_action(title_box)
     if title_box.clicked {
         value^ = !value^
     }
 
     if value^ == true {
         // content_window
-        box_begin({flags = {.FLOATING}, children_layout_axis = .VERTICAL})
+        box_title := fmt.aprintf("dropdown__%s", title, allocator = state.allocator)
+        box_begin(box_title, description = Box_Desc{flags = {.FLOATING}, children_layout_axis = .VERTICAL})
     }
 
     return value^
@@ -485,7 +486,11 @@ build_draw_commands :: proc() -> []Draw_Command {
 @(deferred_out = box_end)
 spacer :: proc() -> bool {
     box_begin(
-        {h_size = {type = .BASED_ON_PARENT_PCT, value = 1}, v_size = {type = .FIXED, value = 50}, flags = {.NONE}},
+        description = Box_Desc {
+            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+            v_size = {type = .FIXED, value = 50},
+            flags = {.NONE},
+        },
     )
     return true
 }
@@ -508,17 +513,17 @@ dropdown_end :: proc(open: bool) {
 
 @(deferred_out = box_end)
 row :: proc() -> bool {
-    return box_begin({children_layout_axis = .HORIZONTAL})
+    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
 }
 
 @(deferred_out = box_end)
 column :: proc() -> bool {
-    return box_begin({children_layout_axis = .VERTICAL})
+    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
 }
 
 @(deferred_out = box_end)
 box :: proc(description := Box_Desc{}) -> bool {
-    return box_begin(description)
+    return box_begin(description = description)
 }
 box_end :: proc(_: bool) {
     pop(&state.curr_parent)
@@ -664,7 +669,7 @@ checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
 }
 
 @(private)
-box_begin :: proc(description := Box_Desc{}) -> bool {
+box_begin :: proc(title: string = {}, description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
@@ -678,7 +683,7 @@ box_begin :: proc(description := Box_Desc{}) -> bool {
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
 
-    box := create_box("", box_h_size, box_v_size, box_flags, .NONE, box_children_layout_axis, box_color)
+    box := create_box(title, box_h_size, box_v_size, box_flags, .NONE, box_children_layout_axis, box_color)
 
     append(&state.curr_parent, box)
     return true
@@ -906,9 +911,6 @@ calc_size_downwards_dependent :: proc(node: ^Box) {
 
     for elem := node; elem != nil; elem = elem.next {
         calc_size_downwards_dependent(elem.first)
-        if .FLOATING in elem.flags {
-            continue
-        }
         if elem.h_size.type == .BASED_ON_CHILDREN_SUM {
             switch (elem.children_layout_axis) {
                 case .VERTICAL:
@@ -949,11 +951,14 @@ calc_positions :: proc(node: ^Box) {
 
     parent := node.parent
     pen_pos: [2]f32 = {parent.pos.x, parent.pos.y}
-
+    if .FLOATING in parent.flags {
+        pen_pos.y += parent.parent.dimensions.y // lol
+    }
     // @warn: we kinda dont clip anything here so
     for elem := node; elem != nil; elem = elem.next {
         elem.pos.x = pen_pos.x + OFFSET_X
         elem.pos.y = pen_pos.y + OFFSET_Y
+
         if .FLOATING not_in elem.flags {
             switch (parent.children_layout_axis) {
                 case .VERTICAL:
