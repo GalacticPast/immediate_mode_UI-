@@ -18,11 +18,16 @@ Text_Align_Flag :: enum {
 
 WIDGET_FLAG :: enum {
     NONE,
+    // actions
     PRESSABLE,
     HOVERABLE,
     DRAGGABLE,
     RESIZABLE,
     GRABBABLE,
+    // types
+    FLOATING,
+
+    // draws
     DRAW_TEXT,
     DRAW_RECT,
     DRAW_BORDER,
@@ -272,6 +277,7 @@ panel :: proc(title: string, description := Box_Desc{}) -> bool {
     return true
 }
 
+
 panel_end :: proc(_: bool) {
     pop(&state.curr_parent)
 }
@@ -309,38 +315,36 @@ collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{
     return value^
 }
 
-@(deferred_out = box_end)
-spacer :: proc() -> bool {
-    box_begin(
-        {h_size = {type = .BASED_ON_PARENT_PCT, value = 1}, v_size = {type = .FIXED, value = 50}, flags = {.NONE}},
-    )
-    return true
-}
+@(deferred_out = dropdown_end)
+dropdown :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
+    box_begin({flags = {.FLOATING}, children_layout_axis = .VERTICAL})
 
-collapsable_header_end :: proc(open: bool) {
-    if open {
-        box_end(open)
+    // title
+    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
+    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
+    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_TEXT, .DRAW_RECT}
+    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
+    box_color := description.color.? or_else state.def_color
+    text_align := description.text_algin_flag.? or_else .CENTER
+
+    // definitive that desc is filled
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    title_box := create_box(title, box_h_size, box_v_size, box_flags, text_align, box_children_layout_axis, box_color)
+
+    check_action(title_box)
+
+    if title_box.clicked {
+        value^ = !value^
     }
-    box_end(open)
-}
 
+    if value^ == true {
+        // floating window
+        box_begin({children_layout_axis = .VERTICAL})
+    }
 
-@(deferred_out = box_end)
-row :: proc() -> bool {
-    return box_begin({children_layout_axis = .HORIZONTAL})
-}
-
-@(deferred_out = box_end)
-column :: proc() -> bool {
-    return box_begin({children_layout_axis = .VERTICAL})
-}
-
-@(deferred_out = box_end)
-box :: proc(description := Box_Desc{}) -> bool {
-    return box_begin(description)
-}
-box_end :: proc(_: bool) {
-    pop(&state.curr_parent)
+    return value^
 }
 
 
@@ -472,8 +476,51 @@ build_draw_commands :: proc() -> []Draw_Command {
     // important so that we only work on the first child index
     calc_positions(root.first)
     // welp
-    pre_order_traversal(root)
+    pre_order_traversal_first_pass(root)
+    pre_order_traversal_second_pass(root)
     return state.draw_commands[:]
+}
+
+@(deferred_out = box_end)
+spacer :: proc() -> bool {
+    box_begin(
+        {h_size = {type = .BASED_ON_PARENT_PCT, value = 1}, v_size = {type = .FIXED, value = 50}, flags = {.NONE}},
+    )
+    return true
+}
+
+@(private)
+collapsable_header_end :: proc(open: bool) {
+    if open {
+        box_end(open)
+    }
+    box_end(open)
+}
+@(private)
+dropdown_end :: proc(open: bool) {
+    if open {
+        box_end(open)
+    }
+    box_end(open)
+}
+
+
+@(deferred_out = box_end)
+row :: proc() -> bool {
+    return box_begin({children_layout_axis = .HORIZONTAL})
+}
+
+@(deferred_out = box_end)
+column :: proc() -> bool {
+    return box_begin({children_layout_axis = .VERTICAL})
+}
+
+@(deferred_out = box_end)
+box :: proc(description := Box_Desc{}) -> bool {
+    return box_begin(description)
+}
+box_end :: proc(_: bool) {
+    pop(&state.curr_parent)
 }
 
 @(private)
@@ -816,7 +863,6 @@ calc_size_independent :: proc(node: ^Box) {
             case .FIXED:
                 elem.dimensions.y = elem.v_size.value
             case .NONE:
-
         }
     }
 }
@@ -859,6 +905,9 @@ calc_size_downwards_dependent :: proc(node: ^Box) {
 
     for elem := node; elem != nil; elem = elem.next {
         calc_size_downwards_dependent(elem.first)
+        if .FLOATING in elem.flags {
+            continue
+        }
         if elem.h_size.type == .BASED_ON_CHILDREN_SUM {
             switch (elem.children_layout_axis) {
                 case .VERTICAL:
@@ -904,14 +953,17 @@ calc_positions :: proc(node: ^Box) {
     for elem := node; elem != nil; elem = elem.next {
         elem.pos.x = pen_pos.x + OFFSET_X
         elem.pos.y = pen_pos.y + OFFSET_Y
-
-        switch (parent.children_layout_axis) {
-            case .VERTICAL:
-                pen_pos.y += elem.dimensions.y // hmm
-            case .HORIZONTAL:
-                pen_pos.x += elem.dimensions.x // hmm
-            case:
-                assert(false, "Children layout not specified.")
+        if .FLOATING not_in elem.flags {
+            switch (parent.children_layout_axis) {
+                case .VERTICAL:
+                    pen_pos.y += elem.dimensions.y // hmm
+                case .HORIZONTAL:
+                    pen_pos.x += elem.dimensions.x // hmm
+                case:
+                    assert(false, "Children layout not specified.")
+            }
+        } else {
+            fmt.printf("key : %lld", elem.key)
         }
         calc_positions(elem.first)
     }
@@ -919,34 +971,49 @@ calc_positions :: proc(node: ^Box) {
 }
 
 @(private)
-pre_order_traversal :: proc(node: ^Box) {
+pre_order_traversal_first_pass :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         color := elem.color
-        if elem.hovered {
-            color = {1, 1, 0}
+        if .FLOATING not_in elem.flags {
+            if elem.hovered {
+                color = {1, 1, 0}
+            }
+            if .DRAW_BORDER in elem.flags {
+                append(
+                    &state.draw_commands,
+                    {
+                        clip = {{elem.pos.x - 1.5, elem.pos.y - 1.5}, elem.dimensions + 2.5},
+                        color = {1, 0, 0},
+                        type = .RECTANGLE,
+                    },
+                )
+            }
+            if .DRAW_RECT in elem.flags {
+                append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = color, type = .RECTANGLE})
+            }
+            if .DRAW_TEXT in elem.flags {
+                text_pos := text_align(elem)
+                append(
+                    &state.draw_commands,
+                    {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title},
+                )
+            }
+            if .DRAW_CUSTOM in elem.flags {
+                assert(elem.custom_draw != nil, "Set DRAW_CUSTOM but no custom draw proc attached")
+                elem.custom_draw(elem, elem.custom_data)
+            }
+            pre_order_traversal_first_pass(elem.first)
         }
-        if .DRAW_BORDER in elem.flags {
-            append(
-                &state.draw_commands,
-                {
-                    clip = {{elem.pos.x - 1.5, elem.pos.y - 1.5}, elem.dimensions + 2.5},
-                    color = {1, 0, 0},
-                    type = .RECTANGLE,
-                },
-            )
+    }
+}
+
+pre_order_traversal_second_pass :: proc(node: ^Box) {
+    if node == nil do return
+    for elem := node; elem != nil; elem = elem.next {
+        if .FLOATING in elem.flags {
+            pre_order_traversal_first_pass(elem.first)
         }
-        if .DRAW_RECT in elem.flags {
-            append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = color, type = .RECTANGLE})
-        }
-        if .DRAW_TEXT in elem.flags {
-            text_pos := text_align(elem)
-            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-        }
-        if .DRAW_CUSTOM in elem.flags {
-            assert(elem.custom_draw != nil, "Set DRAW_CUSTOM but no custom draw proc attached")
-            elem.custom_draw(elem, elem.custom_data)
-        }
-        pre_order_traversal(elem.first)
+        pre_order_traversal_second_pass(elem.first)
     }
 }

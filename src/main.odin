@@ -46,6 +46,7 @@ main :: proc() {
     run := true
 
     res: bool = false
+    dropdown: bool = false
     option: u32 = 0
     red: f32 = 0
     header: bool = false
@@ -76,6 +77,19 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel", description) {
+                if ui.row() {
+                    if ui.dropdown("Menu", &dropdown) {
+                        if ui.button("Save") {
+
+                        }
+                        if ui.button("Delete") {
+
+                        }
+                        if ui.button("Help") {
+
+                        }
+                    }
+                }
                 if ui.collapsable_header("header", &header) {
                     if ui.panel("large container") {
                         if ui.box(
@@ -86,27 +100,9 @@ main :: proc() {
                             },
                         ) {
                             if ui.button("button") {
+
                             }
                         }
-                    }
-                }
-                if ui.panel(
-                    "panel_2",
-                    {
-                        h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                        v_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                        color = {0, 1, 0},
-                    },
-                ) {
-                    if ui.panel(
-                        "panel_3",
-                        {
-                            h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                            v_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                            color = {1, 0, 0},
-                        },
-                    ) {
-
                     }
                 }
                 if ui.row() {

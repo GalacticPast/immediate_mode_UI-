@@ -23,6 +23,8 @@
 - [ ] Exclude mouse movement before the press from the slider's initial drag delta when movement and press arrive in the same event batch.
 - [ ] Review hit testing against previous-frame geometry when widgets move or first appear.
 - [ ] Add layout and interaction tests, including sibling sizes and repeated builds.
+- [ ] Check widget key collisions for identically named children in separate collapsible headers.
+- [ ] Check whether a full-width collapsible header fits inside its parent after container offsets and padding.
 - [ ] fix the checkbox text alignement
 
 # Wayland cursor follow-ups
