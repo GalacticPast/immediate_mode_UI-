@@ -226,6 +226,10 @@ build :: proc(events: pl.Event_List) -> bool {
                 eat = e
         }
     }
+    if eat != nil {
+        pl.eat_event(&state.events, eat)
+        eat = nil
+    }
 
     state.mouse_dx = state.mouse_pos - state.prev_frame_mouse_pos
 
