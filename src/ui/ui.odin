@@ -568,6 +568,7 @@ build_draw_commands :: proc() -> []Draw_Command {
     calc_size_upwards_dependent(root)   // hmmm
     calc_size_downwards_dependent(root) // hmmm
     //@todo: missing shrinking
+    calc_final_sizes(root)
 
     // important so that we only work on the first child index
     calc_positions(root.first)
@@ -1052,6 +1053,72 @@ calc_size_downwards_dependent :: proc(node: ^Box) {
                     }
             }
         }
+    }
+}
+// this is the pass that will check whether to shrink it or not
+calc_final_sizes :: proc(node: ^Box) {
+    if node == nil do return
+
+    for elem := node; elem != nil; elem = elem.next {
+        pref_width: f32
+        pref_height: f32
+        shrink_capacity_sum: f32
+
+        switch elem.children_layout_axis {
+            case .VERTICAL:
+                for child := elem.first; child != nil; child = child.next {
+                    pref_width = max(pref_width, child.dimensions.x)
+                    pref_height += child.dimensions.y
+
+                    if child.next != nil {
+                        pref_height += OFFSET_Y
+                    }
+
+                    shrink_capacity_sum += child.dimensions.y * (1 - child.v_size.value)
+                }
+
+                overflow := max(f32(0), pref_height - elem.dimensions.y)
+
+                if overflow > 0 && shrink_capacity_sum > 0 {
+                    // Never shrink beyond the children's combined capacity.
+                    shrink_total := min(overflow, shrink_capacity_sum)
+
+                    for child := elem.first; child != nil; child = child.next {
+                        capacity := child.dimensions.y * (1 - child.v_size.value)
+                        shrink_amount := shrink_total * (capacity / shrink_capacity_sum)
+
+                        child.dimensions.y -= shrink_amount
+                    }
+                }
+
+            case .HORIZONTAL:
+                for child := elem.first; child != nil; child = child.next {
+                    pref_width += child.dimensions.x
+                    pref_height = max(pref_height, child.dimensions.y)
+
+                    if child.next != nil {
+                        pref_width += OFFSET_X
+                    }
+
+                    shrink_capacity_sum += child.dimensions.x * (1 - child.h_size.value)
+                }
+
+                overflow := max(f32(0), pref_width - elem.dimensions.x)
+
+                if overflow > 0 && shrink_capacity_sum > 0 {
+                    shrink_total := min(overflow, shrink_capacity_sum)
+
+                    for child := elem.first; child != nil; child = child.next {
+                        capacity := child.dimensions.x * (1 - child.h_size.value)
+                        shrink_amount := shrink_total * (capacity / shrink_capacity_sum)
+
+                        child.dimensions.x -= shrink_amount
+                    }
+                }
+        }
+
+        // Process descendants using their parent's updated dimensions.
+        calc_final_sizes(elem.first)
     }
 }
 
