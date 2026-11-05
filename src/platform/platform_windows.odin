@@ -102,6 +102,14 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
                 },
             )
             return 0
+        case win.WM_LBUTTONDOWN:
+            push_window_event({type = .MOUSE_BTN_PRESSED, key = .BTN_LEFT})
+        case win.WM_LBUTTONUP:
+            push_window_event({type = .MOUSE_BTN_RELEASED, key = .BTN_LEFT})
+        case win.WM_RBUTTONDOWN:
+            push_window_event({type = .MOUSE_BTN_PRESSED, key = .BTN_RIGHT})
+        case win.WM_RBUTTONUP:
+            push_window_event({type = .MOUSE_BTN_RELEASED, key = .BTN_RIGHT})
     }
 
     return win.DefWindowProcW(hwnd, msg, w_param, l_param)
@@ -313,6 +321,15 @@ get_window_size :: proc() -> (i32, i32) {
     return p_w_state.width, p_w_state.height
 }
 
+set_cursor_icon :: proc(type: Pointer_Type) {
+    cursor_code := translate_cursor_code(type)
+    if type == .NONE {     // hide the cursor
+    } else {
+        h_cursor := win.LoadCursorA(nil, cursor_code)
+        win.SetCursor(h_cursor)
+    }
+}
+
 // Key_Type already uses the windows virtual key codes as its values
 translate_key_code :: proc(vk: win.WPARAM) -> Key_Type {
     k := Key_Type(vk)
@@ -320,16 +337,19 @@ translate_key_code :: proc(vk: win.WPARAM) -> Key_Type {
 }
 
 @(private)
-translate_cursor_code :: proc(type : Pointer_Type) -> u32{
-    res: u32 
-    switch(type) {
-        case .NONE:     res = 0,
-        case .DEFAULT:  res= 1,
-        case .POINTER:  res= 4,
-        case .TEXT   :  res= 9,
-        case .GRAB   :  res= 16,
-     case .GRABBING: res= 17,
-      case .DRAGGING: res= 26,
+translate_cursor_code :: proc(type: Pointer_Type) -> win.LPCSTR {
+    res: win.LPCSTR
+    switch (type) {
+        case .NONE:
+            res = win.IDC_WAIT
+        case .DEFAULT, .POINTER:
+            res = win.IDC_ARROW
+        case .TEXT:
+            res = win.IDC_IBEAM
+        case .GRAB, .GRABBING:
+            res = win.IDC_HAND
+        case .DRAGGING:
+            res = win.IDC_SIZEALL
     }
     return res
 }

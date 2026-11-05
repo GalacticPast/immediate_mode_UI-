@@ -23,13 +23,13 @@ Vector2 :: [2]i32
 
 //@todo: based on wayland, change later
 Pointer_Type :: enum {
-    NONE     = 0,
-    DEFAULT  = 1,
-    POINTER  = 4,
-    TEXT     = 9,
-    GRAB     = 16,
-    GRABBING = 17,
-    DRAGGING = 26,
+    NONE = 0,
+    DEFAULT,
+    POINTER,
+    TEXT,
+    GRAB,
+    GRABBING,
+    DRAGGING,
 }
 
 Key_Type :: enum {
