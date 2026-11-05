@@ -318,3 +318,18 @@ translate_key_code :: proc(vk: win.WPARAM) -> Key_Type {
     k := Key_Type(vk)
     return reflect.enum_value_has_name(k) ? k : .NONE
 }
+
+@(private)
+translate_cursor_code :: proc(type : Pointer_Type) -> u32{
+    res: u32 
+    switch(type) {
+        case .NONE:     res = 0,
+        case .DEFAULT:  res= 1,
+        case .POINTER:  res= 4,
+        case .TEXT   :  res= 9,
+        case .GRAB   :  res= 16,
+     case .GRABBING: res= 17,
+      case .DRAGGING: res= 26,
+    }
+    return res
+}

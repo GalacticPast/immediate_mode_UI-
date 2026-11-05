@@ -553,6 +553,20 @@ get_window_size :: proc() -> (i32, i32) {
 }
 
 
+translate_cursor_code :: proc(type : Pointer_Type) -> u32{
+    res: u32 
+    switch(type) {
+        case .NONE:     res = 0,
+        case .DEFAULT:  res= 1,
+        case .POINTER:  res= 4,
+        case .TEXT   :  res= 9,
+        case .GRAB   :  res= 16,
+     case .GRABBING: res= 17,
+      case .DRAGGING: res= 26,
+    }
+    return res
+}
+
 translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
     switch (xkb_key) {
         case wl.XKB_KEY_Escape:
