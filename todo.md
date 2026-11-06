@@ -15,6 +15,7 @@
 
 # UI
 
+- [ ] Make spacing consistent across child-based sizing, constraint calculations, and positioning.
 - [x] Restore scoped `if` calls for builds, panels, rows, columns, and boxes.
 - [x] Add a checkbox with custom drawing and caller-owned state.
 - [ ] Check checkbox and text alignment visually using the actual font metrics.

@@ -534,11 +534,12 @@ get_display_scale :: proc() -> f32 {
 }
 
 set_cursor_icon :: proc(type: Pointer_Type) {
+    cursor := translate_cursor_code(type)
     if p_l_state.pointer == nil || p_l_state.wp_cursor_shape_device == nil do return
     if type == .NONE {     // hide the cursor
         wl.pointer_set_cursor(p_l_state.pointer, p_l_state.pointer_serial, nil, 0, 0)
     } else {
-        wl.wp_cursor_shape_device_v1_set_shape(p_l_state.wp_cursor_shape_device, p_l_state.pointer_serial, u32(type))
+        wl.wp_cursor_shape_device_v1_set_shape(p_l_state.wp_cursor_shape_device, p_l_state.pointer_serial, cursor)
     }
 }
 
