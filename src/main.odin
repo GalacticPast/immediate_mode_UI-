@@ -40,7 +40,16 @@ overlap_check :: proc(menu_first: bool, open: ^bool, last_action: ^string) {
             }
         } else {
             if ui.box(overlay) {
-                if ui.box(ui.Box_Desc{v_size = {type = .FIXED, value = 26}, flags = {.NONE}, color = {1, 1, 0}}) {  }
+                if ui.box(
+                    {
+                        h_size = {type = .FIXED, value = 26},
+                        v_size = {type = .FIXED, value = 26},
+                        flags = {.DRAW_RECT},
+                        color = {1, 1, 0},
+                    },
+                ) {
+
+                }
                 if ui.button("Under second menu", fixed) {
                     last_action^ = "Under menu-second clicked"
                 }
@@ -277,9 +286,9 @@ main :: proc() {
         for cmd in ui_draw_commands {
             switch (cmd.type) {
                 case .RECTANGLE:
-                    r.push({cmd.clip.pos, cmd.clip.dimen}, cmd.color)
+                    r.push({cmd.rect.pos, cmd.rect.dimen}, cmd.color, {cmd.clip.pos, cmd.clip.dimen})
                 case .TEXT:
-                    r.push(cmd.title, cmd.clip.pos, cmd.color, 12, 0)
+                    r.push(cmd.title, cmd.rect.pos, cmd.color, 12, 0, {cmd.clip.pos, cmd.clip.dimen})
                 case .NONE:
             }
         }

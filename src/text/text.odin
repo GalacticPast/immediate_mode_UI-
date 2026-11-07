@@ -30,20 +30,23 @@ Glyph_Data :: struct {
     curves_indicies:    [2]i32,
     aabb:               AABB2,
     advance:            f32, // em
-    // first 8 is the start and end for the horizontal
-    bands_loc:          [NUMBER_OF_BANDS * 2][2]i32,
+    // Ranges of band entries in the glyphs' horizontal and vertical location arrays.
+    h_band_loc_range:   [2]i32,
+    v_band_loc_range:   [2]i32,
 }
 
 Glyphs :: struct {
-    funit_to_em:      f32, // usually 2048
-    ascent:           f32,
-    descent:          f32,
-    line_gap:         f32,
-    curves:           [dynamic]Curve,
-    horizontal_bands: [dynamic]i32,
-    vertical_bands:   [dynamic]i32,
-    data:             [TEXT_GLYPH_COUNT]Glyph_Data, // all of ascii
-    font_name:        string,
+    funit_to_em:          f32, // usually 2048
+    ascent:               f32,
+    descent:              f32,
+    line_gap:             f32,
+    curves:               [dynamic]Curve,
+    horizontal_bands:     [dynamic]i32,
+    vertical_bands:       [dynamic]i32,
+    horizontal_bands_loc: [dynamic][2]i32,
+    vertical_bands_loc:   [dynamic][2]i32,
+    data:                 [TEXT_GLYPH_COUNT]Glyph_Data, // all of ascii
+    font_name:            string,
 }
 
 
@@ -71,6 +74,8 @@ delete_glyphs :: proc(g: ^Glyphs) {
     delete(g.curves)
     delete(g.horizontal_bands)
     delete(g.vertical_bands)
+    delete(g.horizontal_bands_loc)
+    delete(g.vertical_bands_loc)
 }
 
 load_font :: proc(file_path: string) -> ^Glyphs {
@@ -90,6 +95,8 @@ load_font :: proc(file_path: string) -> ^Glyphs {
     g.curves = make([dynamic]Curve, allocator)
     g.horizontal_bands = make([dynamic]i32, allocator)
     g.vertical_bands = make([dynamic]i32, allocator)
+    g.horizontal_bands_loc = make([dynamic][2]i32, allocator)
+    g.vertical_bands_loc = make([dynamic][2]i32, allocator)
     g.funit_to_em = stbtt.ScaleForMappingEmToPixels(&font_info, 1.0)
 
     ascent, descent, line_gap: i32
@@ -209,11 +216,13 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
 
         // horizontal banding
         h_band_height := (max_p.y - min_p.y) / NUMBER_OF_BANDS
+
+        data.h_band_loc_range.x = i32(len(g.horizontal_bands_loc))
         for b in 0 ..< NUMBER_OF_BANDS {
             band_min_y := min_p.y + f32(b) * h_band_height - eps
             band_max_y := min_p.y + f32(b + 1) * h_band_height + eps
 
-            data.bands_loc[b].x = i32(len(g.horizontal_bands))
+            x := i32(len(g.horizontal_bands))
             for c, j in glyph_curves {
                 // check if it is horizontal
                 if abs(c.p0.y - c.p2.y) < 1e-6 && abs(c.p1.y - (c.p0.y + c.p2.y) * 0.5) < 1e-6 do continue
@@ -223,16 +232,19 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
                     append(&g.horizontal_bands, start + i32(j))
                 }
             }
-            data.bands_loc[b].y = i32(len(g.horizontal_bands))
+            y := i32(len(g.horizontal_bands))
+            append(&g.horizontal_bands_loc, {x, y})
         }
+        data.h_band_loc_range.y = i32(len(g.horizontal_bands_loc))
 
         // vertical banding
         v_band_width := (max_p.x - min_p.x) / NUMBER_OF_BANDS
+        data.v_band_loc_range.x = i32(len(g.vertical_bands_loc))
         for b in 0 ..< NUMBER_OF_BANDS {
             band_min_x := min_p.x + f32(b) * v_band_width - eps
             band_max_x := min_p.x + f32(b + 1) * v_band_width + eps
 
-            data.bands_loc[b + NUMBER_OF_BANDS].x = i32(len(g.vertical_bands))
+            x := i32(len(g.vertical_bands))
             for c, j in glyph_curves {
                 // check if it is vertical
                 if abs(c.p0.x - c.p2.x) < 1e-5 && abs(c.p1.x - (c.p0.x + c.p2.x) * 0.5) < 1e-5 do continue
@@ -242,7 +254,9 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
                     append(&g.vertical_bands, start + i32(j))
                 }
             }
-            data.bands_loc[b + NUMBER_OF_BANDS].y = i32(len(g.vertical_bands))
+            y := i32(len(g.vertical_bands))
+            append(&g.vertical_bands_loc, {x, y})
         }
+        data.v_band_loc_range.y = i32(len(g.vertical_bands_loc))
     }
 }

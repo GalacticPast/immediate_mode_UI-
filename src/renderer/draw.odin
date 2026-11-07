@@ -5,12 +5,12 @@ import "../text"
 import "core:math"
 
 Draw_Instance :: struct {
-    pen_offset:                [2]f32,
-    curve_indices:             [2]f32,
-    color_and_font_px:         [4]f32, // the last value of color is the font size
-    translation_matrix:        matrix[4, 4]f32,
-    horizontal_band_locations: [4][4]f32,
-    vertical_band_locations:   [4][4]f32,
+    pen_offset:         [2]f32,
+    curve_indices:      [2]f32,
+    color_and_font_px:  [4]f32, // the last value of color is the font size
+    bands_location:     [4]f32,
+    translation_matrix: matrix[4, 4]f32,
+    clip_rect:          [4]f32, // top-left position and dimensions, in physical pixels
 }
 
 Rect :: struct {
@@ -102,7 +102,7 @@ push :: proc {
     push_rect,
 }
 
-push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, wrap_width: f32) {
+push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, wrap_width: f32, clip: Rect) {
     d_s := pl.get_display_scale()
     font_px := font_size * d_s
     pos_px := position * d_s
@@ -139,31 +139,31 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
             color_and_font_px  = {color.r, color.g, color.b, font_px},
             translation_matrix = g.translation_matrix,
+            clip_rect          = {clip.pos.x * d_s, clip.pos.y * d_s, clip.dimensions.x * d_s, clip.dimensions.y * d_s},
+            bands_location     = [4]f32 {
+                cast(f32)g.h_band_loc_range.x,
+                cast(f32)g.h_band_loc_range.y,
+                cast(f32)g.v_band_loc_range.x,
+                cast(f32)g.v_band_loc_range.y,
+            },
         }
 
-        // each vec4 packs two [start, end) ranges
-        for k in 0 ..< text.NUMBER_OF_BANDS / 2 {
-            h0, h1 := g.bands_loc[2 * k], g.bands_loc[2 * k + 1]
-            v0, v1 := g.bands_loc[text.NUMBER_OF_BANDS + 2 * k], g.bands_loc[text.NUMBER_OF_BANDS + 2 * k + 1]
-            instance.horizontal_band_locations[k] = {f32(h0.x), f32(h0.y), f32(h1.x), f32(h1.y)}
-            instance.vertical_band_locations[k] = {f32(v0.x), f32(v0.y), f32(v1.x), f32(v1.y)}
-        }
         append(&d_state.gpu_buffer, instance)
         pen_pos.x += g.advance * font_px
     }
 }
 
-push_rect :: proc(r: Rect, color: [3]f32) {
+push_rect :: proc(r: Rect, color: [3]f32, clip: Rect) {
     d_s := pl.get_display_scale()
     pos := r.pos * d_s
     dimensions := r.dimensions * d_s
     instance := Draw_Instance {
-        pen_offset                = {pos.x, pos.y},
-        curve_indices             = {dimensions.x, dimensions.y},
-        color_and_font_px         = {color.r, color.g, color.b, 0},
-        translation_matrix        = {},
-        horizontal_band_locations = {},
-        vertical_band_locations   = {},
+        pen_offset         = {pos.x, pos.y},
+        curve_indices      = {dimensions.x, dimensions.y},
+        color_and_font_px  = {color.r, color.g, color.b, 0},
+        translation_matrix = {},
+        bands_location     = {},
+        clip_rect          = {clip.pos.x * d_s, clip.pos.y * d_s, clip.dimensions.x * d_s, clip.dimensions.y * d_s},
     }
     append(&d_state.gpu_buffer, instance)
 }

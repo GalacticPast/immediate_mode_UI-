@@ -10,6 +10,8 @@ OpenGL_State :: struct {
     curves_ssbo:           u32,
     horizontal_bands_ssbo: u32,
     vertical_bands_ssbo:   u32,
+    horizontal_band_locations_ssbo: u32,
+    vertical_band_locations_ssbo:   u32,
     b_vao:                 u32,
     b_vbo:                 u32,
     b_ebo:                 u32,
@@ -52,6 +54,10 @@ CURVES_BINDING :: 1
 HORIZONTAL_BANDS_BINDING :: 2
 @(private)
 VERTICAL_BANDS_BINDING :: 3
+@(private)
+HORIZONTAL_BAND_LOCATIONS_BINDING :: 4
+@(private)
+VERTICAL_BAND_LOCATIONS_BINDING :: 5
 
 @(private)
 backend_init :: proc() {
@@ -82,17 +88,17 @@ backend_init :: proc() {
     link_attrib(1, 2, stride, offset_of(Draw_Instance, pen_offset))
     link_attrib(2, 2, stride, offset_of(Draw_Instance, curve_indices))
     link_attrib(3, 4, stride, offset_of(Draw_Instance, color_and_font_px))
+    link_attrib(4, 4, stride, offset_of(Draw_Instance, bands_location))
     for i in 0 ..< 4 {
         column := uintptr(i * size_of([4]f32))
-        link_attrib(u32(4 + i), 4, stride, offset_of(Draw_Instance, translation_matrix) + column)
-        link_attrib(u32(8 + i), 4, stride, offset_of(Draw_Instance, horizontal_band_locations) + column)
-        link_attrib(u32(12 + i), 4, stride, offset_of(Draw_Instance, vertical_band_locations) + column)
+        link_attrib(u32(5 + i), 4, stride, offset_of(Draw_Instance, translation_matrix) + column)
     }
+    link_attrib(9, 4, stride, offset_of(Draw_Instance, clip_rect))
 
     // every attribute except the quad position (0) advances once per instance
-    first_matrix_location :: 4
-    matrix_column_count :: 12
-    for i in 1 ..< first_matrix_location + matrix_column_count {
+    first_matrix_location :: 5
+    matrix_column_count :: 4
+    for i in 1 ..= first_matrix_location + matrix_column_count {
         gl.VertexAttribDivisor(u32(i), 1)
     }
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
@@ -118,6 +124,8 @@ backend_deinit :: proc() {
     gl.DeleteBuffers(1, &gl_state.curves_ssbo)
     gl.DeleteBuffers(1, &gl_state.horizontal_bands_ssbo)
     gl.DeleteBuffers(1, &gl_state.vertical_bands_ssbo)
+    gl.DeleteBuffers(1, &gl_state.horizontal_band_locations_ssbo)
+    gl.DeleteBuffers(1, &gl_state.vertical_band_locations_ssbo)
 
     gl.DeleteBuffers(1, &gl_state.instanced_vbo)
     gl.DeleteBuffers(1, &gl_state.b_vbo)
@@ -143,6 +151,8 @@ upload_to_gpu :: proc(g: ^text.Glyphs) {
     upload_ssbo(&gl_state.curves_ssbo, CURVES_BINDING, g.curves[:])
     upload_ssbo(&gl_state.horizontal_bands_ssbo, HORIZONTAL_BANDS_BINDING, g.horizontal_bands[:])
     upload_ssbo(&gl_state.vertical_bands_ssbo, VERTICAL_BANDS_BINDING, g.vertical_bands[:])
+    upload_ssbo(&gl_state.horizontal_band_locations_ssbo, HORIZONTAL_BAND_LOCATIONS_BINDING, g.horizontal_bands_loc[:])
+    upload_ssbo(&gl_state.vertical_band_locations_ssbo, VERTICAL_BAND_LOCATIONS_BINDING, g.vertical_bands_loc[:])
 }
 
 @(private)

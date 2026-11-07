@@ -18,20 +18,27 @@ layout(std430, binding = 2) buffer h_bands{
 layout(std430, binding = 3) buffer v_bands{
     int vertical_bands[];
 };
+layout(std430, binding = 4) buffer h_band_locations {
+    ivec2 horizontal_band_locations[];
+};
+layout(std430, binding = 5) buffer v_band_locations {
+    ivec2 vertical_band_locations[];
+};
 
 
 out vec4 FragColor;
 
 in vec2 frag_pos;
+in vec2 frag_screen_pos;
 
 flat in vec2 frag_curve_indicies;
 flat in vec2 frag_glyph_min;
 flat in vec2 frag_glyph_max;
-flat in mat4 frag_h_band_loc;
-flat in mat4 frag_v_band_loc;
+flat in vec4 frag_band_locations;
 flat in vec3 frag_color;
 flat in float frag_font_px;
 flat in vec2 frag_box_half_size;
+flat in vec4 frag_clip_rect;
 
 // Paper Table 1: 16-bit lookup. For input code i, bit 2i is the t1 contribution and bit 2i+1 the t2 contribution.
 #define CONTRIBUTION_TABLE 0x2E74
@@ -44,14 +51,6 @@ flat in vec2 frag_box_half_size;
 
 // number of bands a glyph's bbox is split into, per axis. Must match NUMBER_OF_BANDS in text.h
 #define NUMBER_OF_BANDS 8
-
-// bands_loc packs two bands per mat4 column: column c holds band 2c in .xy and band 2c+1 in .zw.
-// Returns (start, end) into horizontal_bands / vertical_bands for band b.
-vec2 band_range(mat4 packed_bands, int b)
-{
-    vec4 col = packed_bands[b / 2];
-    return (b % 2 == 0) ? col.xy : col.zw;
-}
 
 // Which band a ray at `position` falls in: the same NUMBER_OF_BANDS equal slices the CPU-side band build used.
 int band_index(float position, float box_min, float box_max)
@@ -188,6 +187,11 @@ float combine_rays(float horizontal_coverage, float horizontal_weight,
 
 void main()
 {
+    if (any(lessThanEqual(frag_clip_rect.zw, vec2(0.0))) ||
+        any(lessThan(frag_screen_pos, frag_clip_rect.xy)) ||
+        any(greaterThanEqual(frag_screen_pos, frag_clip_rect.xy + frag_clip_rect.zw)))
+        discard;
+
     if (frag_font_px == 0.0)
     {
         if (any(lessThanEqual(frag_box_half_size, vec2(0.0))))
@@ -206,6 +210,10 @@ void main()
         return;
     }
 
+    // Spaces and other glyphs without outlines have no band entries.
+    if (frag_band_locations.x >= frag_band_locations.y || frag_band_locations.z >= frag_band_locations.w)
+        discard;
+
     float coverage_sum = 0.0;
 
     // Sample positions sit on a line across the pixel: horizontal rays shift in y, vertical rays shift in x.
@@ -218,12 +226,12 @@ void main()
         float ray_x = frag_pos.x + offset_em;
 
         // the band comes from the ray, not the pixel center: an offset ray can sit in the neighboring band
-        vec2 h_range = band_range(frag_h_band_loc, band_index(ray_y, frag_glyph_min.y, frag_glyph_max.y));
-        vec2 v_range = band_range(frag_v_band_loc, band_index(ray_x, frag_glyph_min.x, frag_glyph_max.x));
+        ivec2 h_range = horizontal_band_locations[int(frag_band_locations.x) + band_index(ray_y, frag_glyph_min.y, frag_glyph_max.y)];
+        ivec2 v_range = vertical_band_locations[int(frag_band_locations.z) + band_index(ray_x, frag_glyph_min.x, frag_glyph_max.x)];
 
         float horizontal_coverage = 0.0;
         float horizontal_weight   = 0.0;
-        for (int k = int(h_range.x); k < int(h_range.y); ++k)
+        for (int k = h_range.x; k < h_range.y; ++k)
         {
             Curve curve = curves[horizontal_bands[k]];
             horizontal_coverage += horizontal_contribution(curve, ray_y, frag_pos.x, horizontal_weight);
@@ -231,7 +239,7 @@ void main()
 
         float vertical_coverage = 0.0;
         float vertical_weight   = 0.0;
-        for (int k = int(v_range.x); k < int(v_range.y); ++k)
+        for (int k = v_range.x; k < v_range.y; ++k)
         {
             Curve curve = curves[vertical_bands[k]];
             vertical_coverage += vertical_contribution(curve, ray_x, frag_pos.y, vertical_weight);

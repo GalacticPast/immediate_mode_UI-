@@ -109,6 +109,7 @@ Rect :: struct {
 }
 
 Draw_Command :: struct {
+    rect:  Rect,
     clip:  Rect,
     color: [3]f32,
     title: string,
@@ -418,6 +419,8 @@ context_menu :: proc(title: string, pref_pos: [2]f32) {
 
     box := create_box(title, box_h_size, box_v_size, box_pos, box_flags, .NONE, box_children_layout_axis, box_color)
     del_ll(box.parent, box)
+    box.prev, box.next = nil, nil
+    box.parent = state.root
     insert_ll(state.root, box)
     append(&state.curr_parent, box)
 }
@@ -573,7 +576,7 @@ build_draw_commands :: proc() -> []Draw_Command {
     // important so that we only work on the first child index
     calc_positions(root.first)
     // welp
-    pre_order_traversal(root)
+    pre_order_traversal(root, {root.pos, root.dimensions})
     return state.draw_commands[:]
 }
 
@@ -696,22 +699,22 @@ collapsable_custom_draw :: proc(elem: ^Box, value: rawptr) {
     text_size := r.calculate_text_size(elem.title, state.font_size)
     append(
         &state.draw_commands,
-        {clip = {elem.pos, {elem.dimensions.x, text_size.y + 2 * OFFSET_Y}}, color = r_color, type = .RECTANGLE},
+        {rect = {elem.pos, {elem.dimensions.x, text_size.y + 2 * OFFSET_Y}}, color = r_color, type = .RECTANGLE},
     )
     t_pos := text_align(elem)
-    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
 slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Slider_Box_Data)value
 
-    append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
+    append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
     normalized_val := normalize_f32(data.value^, data.min, data.max)
     append(
         &state.draw_commands,
         {
-            clip = {elem.pos, {elem.dimensions.x * normalized_val, elem.dimensions.y}},
+            rect = {elem.pos, {elem.dimensions.x * normalized_val, elem.dimensions.y}},
             color = {1, 0, 0},
             type = .RECTANGLE,
         },
@@ -723,7 +726,7 @@ slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
     temp := elem.title
     elem.title = title
     t_pos := text_align(elem)
-    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
     elem.title = temp
 }
 
@@ -733,43 +736,43 @@ radio_custom_draw :: proc(elem: ^Box, value: rawptr) {
 
     pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
     dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
-    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
-    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
+    append(&state.draw_commands, {rect = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
+    append(&state.draw_commands, {rect = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
 
     // if the clicked value's id matches the identifier
     if data.value^ == data.identifier {
         s_r_pos := pos.xy + 1
         s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
-        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
+        append(&state.draw_commands, {rect = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
     }
 
     t_pos := text_align(elem)
     t_pos.x += Checkbox_Padding
-    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
 checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Check_Box_Data)value
     //border
-    // append(&state.draw_commands, {clip = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
-    // append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
+    // append(&state.draw_commands, {rect = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
+    // append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
     // checkbox_square pos
     pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
     dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
-    append(&state.draw_commands, {clip = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
-    append(&state.draw_commands, {clip = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
+    append(&state.draw_commands, {rect = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
+    append(&state.draw_commands, {rect = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
 
     // if its clicked then
     if data.value^ == true {
         s_r_pos := pos.xy + 1
         s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
-        append(&state.draw_commands, {clip = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
+        append(&state.draw_commands, {rect = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
     }
 
     t_pos := text_align(elem)
     t_pos.x += Checkbox_Padding
-    append(&state.draw_commands, {clip = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
 }
 
 @(private)
@@ -1130,7 +1133,6 @@ calc_positions :: proc(node: ^Box) {
 
     parent := node.parent
     pen_pos: [2]f32 = {parent.pos.x, parent.pos.y}
-    // @warn: we kinda dont clip anything here so
 
     for elem := node; elem != nil; elem = elem.next {
         if .FLOATING_X not_in elem.flags {
@@ -1158,15 +1160,24 @@ calc_positions :: proc(node: ^Box) {
 }
 
 @(private)
-pre_order_traversal :: proc(node: ^Box) {
+intersect_rect :: proc(a, b: Rect) -> Rect {
+    min_pos := [2]f32{max(a.pos.x, b.pos.x), max(a.pos.y, b.pos.y)}
+    max_pos := [2]f32{min(a.pos.x + a.dimen.x, b.pos.x + b.dimen.x), min(a.pos.y + a.dimen.y, b.pos.y + b.dimen.y)}
+    return {min_pos, {max(0, max_pos.x - min_pos.x), max(0, max_pos.y - min_pos.y)}}
+}
+
+@(private)
+pre_order_traversal :: proc(node: ^Box, inherited_clip: Rect) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
+        clip := intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
         color := elem.color
         if .DRAW_BORDER in elem.flags || state.debug == true {
             append(
                 &state.draw_commands,
                 {
-                    clip = {{elem.pos.x - 1.5, elem.pos.y - 1.5}, elem.dimensions + 2.5},
+                    rect = {{elem.pos.x - 1.5, elem.pos.y - 1.5}, elem.dimensions + 2.5},
+                    clip = inherited_clip,
                     color = {1, 0, 0},
                     type = .RECTANGLE,
                 },
@@ -1176,16 +1187,25 @@ pre_order_traversal :: proc(node: ^Box) {
             color = {1, 1, 0}
         }
         if .DRAW_RECT in elem.flags {
-            append(&state.draw_commands, {clip = {elem.pos, elem.dimensions}, color = color, type = .RECTANGLE})
+            rect := Rect{elem.pos, elem.dimensions}
+            append(&state.draw_commands, {clip = clip, rect = rect, color = color, type = .RECTANGLE})
         }
         if .DRAW_TEXT in elem.flags {
             text_pos := text_align(elem)
-            append(&state.draw_commands, {clip = {text_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+            rect := Rect{text_pos, {}}
+            append(
+                &state.draw_commands,
+                Draw_Command{clip = clip, rect = rect, type = .TEXT, color = {1, 1, 1}, title = elem.title},
+            )
         }
         if .DRAW_CUSTOM in elem.flags {
             assert(elem.custom_draw != nil, "Set DRAW_CUSTOM but no custom draw proc attached")
+            first_command := len(state.draw_commands)
             elem.custom_draw(elem, elem.custom_data)
+            for i in first_command ..< len(state.draw_commands) {
+                state.draw_commands[i].clip = clip
+            }
         }
-        pre_order_traversal(elem.first)
+        pre_order_traversal(elem.first, clip)
     }
 }
