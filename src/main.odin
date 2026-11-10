@@ -108,6 +108,8 @@ main :: proc() {
     option: u32 = 0
     red: f32 = 0
     header: bool = false
+    show_clipping_checks := false
+    clipping_action := "No clipping target clicked"
     for run {
         list := pl.get_events()
         same_frame_click := false
@@ -124,6 +126,14 @@ main :: proc() {
                         eat = e
                     }
                 case .KEY_PRESS:
+                    if e.key == .C {
+                        show_clipping_checks = !show_clipping_checks
+                        eat = e
+                    }
+                    if e.key == .R && show_clipping_checks {
+                        clipping_action = "No clipping target clicked"
+                        eat = e
+                    }
                     if e.key == .SPACE {
                         same_frame_click = have_mouse_pos
                         last_action = "Space sent: no button clicked"
@@ -168,7 +178,9 @@ main :: proc() {
                 h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
-            if ui.panel("panel", description) {
+            if show_clipping_checks {
+                clipping_checks(&clipping_action)
+            } else if ui.panel("panel", description) {
                 ui.label("INPUT: click overlapping menu items; status should name the item")
                 ui.label("Menu built before underlying button")
                 overlap_check(true, &first_menu_open, &last_action)

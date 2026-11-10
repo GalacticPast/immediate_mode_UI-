@@ -26,6 +26,8 @@ WIDGET_FLAG :: enum {
     GRABBABLE,
 
     // types
+    CLIP_X,
+    CLIP_Y,
     FLOATING_X,
     FLOATING_Y,
 
@@ -807,10 +809,17 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 
     return res
 }
+
+box_clip :: proc(box: ^Box) -> [2]f32 {
+
+    return {}
+}
+
 @(private)
 check_action :: proc(elem: ^Box) {
     // hot
     if state.active_widget_key == 0 && state.hot_widget_key == 0 {     // if there is an interaction going on or a key is already being hovered , skip the following code
+        // clip
         if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
             state.hot_widget_key = elem.key
             elem.hovered = true
