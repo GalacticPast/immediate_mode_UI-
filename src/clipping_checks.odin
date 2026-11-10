@@ -23,7 +23,7 @@ clipping_checks :: proc(last_action: ^string) {
                 h_size = {type = .FIXED, value = 220},
                 v_size = {type = .FIXED, value = 70},
                 pos = {50, 155},
-                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y},
+                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
                 color = {0.12, 0.12, 0.12},
             },
         ) {
@@ -49,7 +49,7 @@ clipping_checks :: proc(last_action: ^string) {
                 h_size = {type = .FIXED, value = 220},
                 v_size = {type = .FIXED, value = 70},
                 pos = {50, 275},
-                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y},
+                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
                 children_layout_axis = .HORIZONTAL,
                 color = {0.12, 0.12, 0.12},
             },
@@ -60,7 +60,7 @@ clipping_checks :: proc(last_action: ^string) {
                     v_size = {type = .FIXED, value = 38, strictness = 1},
                     flags = {},
                 },
-            ) {}
+            ) {  }
             if ui.button(
                 "Row target",
                 ui.Box_Desc {
@@ -81,7 +81,7 @@ clipping_checks :: proc(last_action: ^string) {
                 h_size = {type = .FIXED, value = 180},
                 v_size = {type = .FIXED, value = 70},
                 pos = {50, 395},
-                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y},
+                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
                 color = {0.12, 0.12, 0.12},
             },
         ) {
@@ -108,6 +108,75 @@ clipping_checks :: proc(last_action: ^string) {
                 }
             }
         }
+
+        clip_check_label("4. Floating panel: green button should extend beyond the dark panel", {50, 490})
+        clip_check_label("Click the green button to the right of the dark panel", {50, 510})
+        if ui.panel(
+            "Floating panel outer boundary",
+            ui.Box_Desc {
+                h_size = {type = .FIXED, value = 160},
+                v_size = {type = .FIXED, value = 70},
+                pos = {50, 535},
+                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
+                color = {0.12, 0.12, 0.12},
+            },
+        ) {
+            if ui.panel(
+                "Floating panel target",
+                ui.Box_Desc {
+                    h_size = {type = .FIXED, value = 160},
+                    v_size = {type = .FIXED, value = 50},
+                    pos = {185, 545},
+                    flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
+                    color = {0.1, 0.25, 0.4},
+                },
+            ) {
+                if ui.button(
+                    "Floating panel button",
+                    ui.Box_Desc {
+                        h_size = {type = .FIXED, value = 145, strictness = 1},
+                        v_size = {type = .FIXED, value = 32, strictness = 1},
+                        color = {0.1, 0.55, 0.25},
+                    },
+                ) {
+                    last_action^ = "Floating panel button clicked"
+                }
+            }
+        }
+
+        clip_check_label("5. Unclipped row: green button should extend beyond the blue row", {50, 630})
+        clip_check_label("Click the green button to the right of the blue row", {50, 650})
+        if ui.panel(
+            "Unclipped row outer boundary",
+            ui.Box_Desc {
+                h_size = {type = .FIXED, value = 340},
+                v_size = {type = .FIXED, value = 70},
+                pos = {50, 675},
+                flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y, .CLIP},
+                color = {0.12, 0.12, 0.12},
+            },
+        ) {
+            if ui.box(
+                ui.Box_Desc {
+                    h_size = {type = .FIXED, value = 100, strictness = 1},
+                    v_size = {type = .FIXED, value = 45, strictness = 1},
+                    flags = {.DRAW_RECT},
+                    children_layout_axis = .HORIZONTAL,
+                    color = {0.1, 0.25, 0.4},
+                },
+            ) {
+                if ui.button(
+                    "Unclipped row button",
+                    ui.Box_Desc {
+                        h_size = {type = .FIXED, value = 180, strictness = 1},
+                        v_size = {type = .FIXED, value = 30, strictness = 1},
+                        color = {0.1, 0.55, 0.25},
+                    },
+                ) {
+                    last_action^ = "Unclipped row button clicked"
+                }
+            }
+        }
     }
 }
 
@@ -120,7 +189,7 @@ clip_check_marker :: proc(pos, dimensions: [2]f32) {
             flags = {.DRAW_RECT, .FLOATING_X, .FLOATING_Y},
             color = {0.55, 0.12, 0.12},
         },
-    ) {}
+    ) {  }
 }
 
 clip_check_label :: proc(title: string, pos: [2]f32) {

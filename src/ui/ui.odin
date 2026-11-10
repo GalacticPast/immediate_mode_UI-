@@ -26,8 +26,7 @@ WIDGET_FLAG :: enum {
     GRABBABLE,
 
     // types
-    CLIP_X,
-    CLIP_Y,
+    CLIP,
     FLOATING_X,
     FLOATING_Y,
 
@@ -288,11 +287,13 @@ panel :: proc(title: string, description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
-    box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT}
+    box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT, .CLIP}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
     text_align := description.text_algin_flag.? or_else .NONE
     box_pos := description.pos.? or_else {-1, -1}
+
+
     // definitive that desc is filled
     assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
     assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
@@ -308,7 +309,9 @@ panel :: proc(title: string, description := Box_Desc{}) -> bool {
         box_color,
     )
     append(&state.curr_parent, panel)
-
+    if .FLOATING_X in box_flags && .FLOATING_Y in box_flags {
+        make_floating(panel)
+    }
     return true
 }
 
@@ -420,10 +423,7 @@ context_menu :: proc(title: string, pref_pos: [2]f32) {
 
 
     box := create_box(title, box_h_size, box_v_size, box_pos, box_flags, .NONE, box_children_layout_axis, box_color)
-    del_ll(box.parent, box)
-    box.prev, box.next = nil, nil
-    box.parent = state.root
-    insert_ll(state.root, box)
+    make_floating(box)
     append(&state.curr_parent, box)
 }
 
@@ -588,7 +588,7 @@ spacer :: proc() -> bool {
         description = Box_Desc {
             h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             v_size = {type = .FIXED, value = 50},
-            flags = {.NONE},
+            flags = {.CLIP},
         },
     )
     return true
@@ -626,6 +626,14 @@ box :: proc(description := Box_Desc{}) -> bool {
 }
 box_end :: proc(_: bool) {
     pop(&state.curr_parent)
+}
+
+@(private)
+make_floating :: proc(box: ^Box) {
+    del_ll(box.parent, box)
+    box.prev, box.next = nil, nil
+    box.parent = state.root
+    insert_ll(state.root, box)
 }
 
 @(private)
@@ -812,7 +820,27 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 
 box_clip :: proc(box: ^Box) -> [2]f32 {
 
-    return {}
+    dimen := box.dimensions
+    parent: ^Box = box.parent
+
+    for ; parent != nil; parent = parent.parent {
+        if .CLIP in parent.flags {
+            // can never be placed on the left of the parent
+            if box.pos.x < parent.pos.x + parent.dimensions.x &&
+               parent.pos.x + parent.dimensions.x < box.pos.x + dimen.x {
+                dimen.x = max(0, dimen.x - (box.pos.x + dimen.x - parent.pos.x - parent.dimensions.x))
+            } else if box.pos.x >= parent.pos.x + parent.dimensions.x {
+                dimen.x = 0
+            }
+            if box.pos.y < parent.pos.y + parent.dimensions.y &&
+               parent.pos.y + parent.dimensions.y < box.pos.y + dimen.y {
+                dimen.y = max(0, dimen.y - (box.pos.y + dimen.y - parent.pos.y - parent.dimensions.y))
+            } else if box.pos.y >= parent.pos.y + parent.dimensions.y {
+                dimen.y = 0
+            }
+        }
+    }
+    return dimen
 }
 
 @(private)
@@ -820,7 +848,8 @@ check_action :: proc(elem: ^Box) {
     // hot
     if state.active_widget_key == 0 && state.hot_widget_key == 0 {     // if there is an interaction going on or a key is already being hovered , skip the following code
         // clip
-        if mouse_collision(state.mouse_pos, {elem.pos, elem.dimensions}) {
+        clip_rect := box_clip(elem)
+        if mouse_collision(state.mouse_pos, {elem.pos, clip_rect}) {
             state.hot_widget_key = elem.key
             elem.hovered = true
             if .PRESSABLE in elem.flags {
