@@ -144,8 +144,8 @@ clipping_checks :: proc(last_action: ^string) {
             }
         }
 
-        clip_check_label("5. Unclipped row: green button should extend beyond the blue row", {50, 630})
-        clip_check_label("Click the green button to the right of the blue row", {50, 650})
+        clip_check_label("5. Clipped row: green button stops at the blue row", {50, 630})
+        clip_check_label("Click inside the row: reacts; outside the row: no reaction", {50, 650})
         if ui.panel(
             "Unclipped row outer boundary",
             ui.Box_Desc {
@@ -156,7 +156,8 @@ clipping_checks :: proc(last_action: ^string) {
                 color = {0.12, 0.12, 0.12},
             },
         ) {
-            if ui.box(
+            if ui.row(
+                "clip",
                 ui.Box_Desc {
                     h_size = {type = .FIXED, value = 100, strictness = 1},
                     v_size = {type = .FIXED, value = 45, strictness = 1},

@@ -3,6 +3,10 @@
 Run `./build.sh` on Linux or `build.bat` on Windows, then run the app from
 the project root with `./bin/app` or `bin\app.exe`.
 
+Run the automated tests on Linux with `./test/run.sh`. The runner copies the
+sources and tests into a temporary tree so the tests can access package-private
+procedures while remaining in `test/`.
+
 The app includes visual checks for layout and input. Open each dropdown and
 click its item where it overlaps the button underneath. The status shows which
 button received the click; repeat for both build orders. Try hovering, holding,

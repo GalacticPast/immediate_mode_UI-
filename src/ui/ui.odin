@@ -609,15 +609,37 @@ dropdown_end :: proc(open: bool) {
     box_end(open)
 }
 
+row :: proc {
+    transient_row,
+    named_row,
+}
+
 
 @(deferred_out = box_end)
-row :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL, flags = {.CLIP}})
+transient_row :: proc() -> bool {
+    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
+}
+@(deferred_out = box_end)
+named_row :: proc(title: string, description: Box_Desc) -> bool {
+    des := description
+    des.children_layout_axis = .HORIZONTAL
+    return box_begin(title, des)
+}
+
+column :: proc {
+    transient_column,
+    named_column,
 }
 
 @(deferred_out = box_end)
-column :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL, flags = {.CLIP}})
+transient_column :: proc() -> bool {
+    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
+}
+@(deferred_out = box_end)
+named_column :: proc(title: string, description: Box_Desc) -> bool {
+    des := description
+    des.children_layout_axis = .VERTICAL
+    return box_begin(title, des)
 }
 
 @(deferred_out = box_end)
@@ -910,6 +932,7 @@ del_ll :: proc(list: ^Box, node: ^Box) {
     if list.last == node {
         list.last = node.prev
     }
+    list.child_count -= 1
 }
 @(private)
 hash_key :: proc(label: string, parent_key := u64(0xcbf29ce484222325)) -> u64 {
