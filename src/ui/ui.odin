@@ -226,8 +226,12 @@ build :: proc(events: pl.Event_List) -> bool {
                 state.mouse_btn_held = e.key
                 eat = e
             case .MOUSE_BTN_RELEASED:
-                state.mouse_btn_press = .NONE
-                state.mouse_btn_held = .NONE
+                if state.mouse_btn_press == e.key {
+                    state.mouse_btn_held = .NONE
+                } else {
+                    state.mouse_btn_held = .NONE
+                    state.mouse_btn_press = .NONE
+                }
                 eat = e
             case .KEY_PRESS:
                 {
@@ -572,7 +576,6 @@ build_draw_commands :: proc() -> []Draw_Command {
     calc_size_independent(root)         // hmmm
     calc_size_upwards_dependent(root)   // hmmm
     calc_size_downwards_dependent(root) // hmmm
-    //@todo: missing shrinking
     calc_final_sizes(root)
 
     // important so that we only work on the first child index
@@ -895,7 +898,7 @@ check_action :: proc(elem: ^Box) {
     }
 
     // none
-    if state.mouse_btn_press == .NONE && state.mouse_btn_held == .NONE {
+    if state.mouse_btn_held == .NONE {
         state.active_widget_key = 0
     }
 }

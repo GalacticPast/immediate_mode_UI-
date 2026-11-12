@@ -316,12 +316,12 @@ Boundaries to remember when learning from the prototype:
 These are learning checkpoints, not claims that `main` already implements them.
 Update this section as the user completes their own versions.
 
-- [ ] Define a small box tree and establish allocation/ownership rules.
-- [ ] Build a frame and draw explicit-position rectangles through the existing renderer.
-- [ ] Add rows/columns, pixel sizes and text measurement.
+- [x] Define a small box tree and establish allocation/ownership rules.
+- [x] Build a frame and draw explicit-position rectangles through the existing renderer.
+- [x] Add rows/columns, pixel sizes and text measurement.
 - [ ] Add parent/child size dependencies and constraint handling; verify the RGB layout.
-- [ ] Add stable identity and previous-build geometry.
-- [ ] Add hit testing, hot/active state, a button, and a draggable slider.
+- [x] Add stable identity and previous-build geometry.
+- [x] Add hit testing, hot/active state, a button, and a draggable slider.
 - [ ] Add parent/style scopes only as repetition makes them useful.
 - [ ] Add clipping, scrolling and painter-order occlusion.
 - [ ] Add keyboard focus, text editing and overlays incrementally.
