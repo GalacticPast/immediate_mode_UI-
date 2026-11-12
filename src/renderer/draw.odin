@@ -139,7 +139,12 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
             color_and_font_px  = {color.r, color.g, color.b, font_px},
             translation_matrix = g.translation_matrix,
-            clip_rect          = {clip.pos.x * d_s, clip.pos.y * d_s, clip.dimensions.x * d_s, clip.dimensions.y * d_s},
+            clip_rect          = {
+                clip.pos.x * d_s,
+                clip.pos.y * d_s,
+                clip.dimensions.x * d_s,
+                clip.dimensions.y * d_s,
+            },
             bands_location     = [4]f32 {
                 cast(f32)g.h_band_loc_range.x,
                 cast(f32)g.h_band_loc_range.y,

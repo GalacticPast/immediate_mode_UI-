@@ -612,12 +612,12 @@ dropdown_end :: proc(open: bool) {
 
 @(deferred_out = box_end)
 row :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
+    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL, flags = {.CLIP}})
 }
 
 @(deferred_out = box_end)
 column :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
+    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL, flags = {.CLIP}})
 }
 
 @(deferred_out = box_end)
@@ -821,9 +821,8 @@ mouse_collision :: proc(m_pos: [2]i32, box: Rect) -> bool {
 box_clip :: proc(box: ^Box) -> [2]f32 {
 
     dimen := box.dimensions
-    parent: ^Box = box.parent
 
-    for ; parent != nil; parent = parent.parent {
+    for parent := box.parent; parent != nil; parent = parent.parent {
         if .CLIP in parent.flags {
             // can never be placed on the left of the parent
             if box.pos.x < parent.pos.x + parent.dimensions.x &&
@@ -1208,7 +1207,10 @@ intersect_rect :: proc(a, b: Rect) -> Rect {
 pre_order_traversal :: proc(node: ^Box, inherited_clip: Rect) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
-        clip := intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
+        clip := inherited_clip
+        if .CLIP in elem.flags {
+            clip = intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
+        }
         color := elem.color
         if .DRAW_BORDER in elem.flags || state.debug == true {
             append(

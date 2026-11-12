@@ -160,7 +160,7 @@ clipping_checks :: proc(last_action: ^string) {
                 ui.Box_Desc {
                     h_size = {type = .FIXED, value = 100, strictness = 1},
                     v_size = {type = .FIXED, value = 45, strictness = 1},
-                    flags = {.DRAW_RECT},
+                    flags = {.DRAW_RECT, .CLIP},
                     children_layout_axis = .HORIZONTAL,
                     color = {0.1, 0.25, 0.4},
                 },
