@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Odin tests share a package directory with the source they test. Assemble a
-# temporary source tree so the checked-in tests can live separately in test/.
+# @test: Odin tests share a package directory with the source they test. Assemble a
+# @test: temporary source tree so the checked-in tests can live separately in test/.
 test_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 project_dir=$(dirname "$test_dir")
 test_workspace=$(mktemp -d "${TMPDIR:-/tmp}/imui-tests.XXXXXXXX")

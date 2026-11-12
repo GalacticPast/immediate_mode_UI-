@@ -4,7 +4,7 @@ import "../text"
 import "core:math/linalg"
 import gl "vendor:OpenGL"
 
-// uploaded as-is to the instanced vbo, the layout has to match the vertex shader
+// @warn: uploaded as-is to the instanced vbo, the layout has to match the vertex shader
 
 OpenGL_State :: struct {
     curves_ssbo:           u32,
@@ -20,7 +20,7 @@ OpenGL_State :: struct {
     projection_loc:        i32,
     model_loc:             i32,
     view_loc:              i32,
-    // frame specific
+    // @note: frame specific
     frame_instance_count:  i32,
     instances:             [dynamic]Draw_Instance,
 }
@@ -31,7 +31,7 @@ gl_state: OpenGL_State
 // odinfmt: disable
 @(private, rodata)
 vertices := [?]f32 {
-    //     COORDINATES
+    //     @note: COORDINATES
     -0.5, -0.5, 0.0,
      0.5, -0.5, 0.0,
      0.5,  0.5, 0.0,
@@ -47,7 +47,7 @@ indices := [?]u32 {
 
 MAX_GLYPHS :: 16_384
 
-// SSBO bindings, must match the layout(binding = N) in the fragment shader
+// @warn: SSBO bindings, must match the layout(binding = N) in the fragment shader
 @(private)
 CURVES_BINDING :: 1
 @(private)
@@ -62,7 +62,7 @@ VERTICAL_BAND_LOCATIONS_BINDING :: 5
 @(private)
 backend_init :: proc() {
 
-    // relative to the working directory: build.sh puts the binary in the project root, next to assets/
+    // @note: relative to the working directory: build.sh puts the binary in the project root, next to assets/
     program, ok := gl.load_shaders_file("assets/shaders/text_vertex.glsl", "assets/shaders/text_fragment.glsl")
     assert(ok, "Text shader creation failed")
     gl_state.shader = program
@@ -95,7 +95,7 @@ backend_init :: proc() {
     }
     link_attrib(9, 4, stride, offset_of(Draw_Instance, clip_rect))
 
-    // every attribute except the quad position (0) advances once per instance
+    // @note: every attribute except the quad position (0) advances once per instance
     first_matrix_location :: 5
     matrix_column_count :: 4
     for i in 1 ..= first_matrix_location + matrix_column_count {
@@ -103,7 +103,7 @@ backend_init :: proc() {
     }
     gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 
-    // bound while the vao is bound, so the vao remembers it
+    // @note: bound while the vao is bound, so the vao remembers it
     gl.GenBuffers(1, &gl_state.b_ebo)
     gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl_state.b_ebo)
     gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, size_of(indices), &indices, gl.STATIC_DRAW)
@@ -111,14 +111,14 @@ backend_init :: proc() {
     gl.BindVertexArray(0)
 }
 
-// links the currently bound GL_ARRAY_BUFFER to attribute `index` of the bound vao
+// @note: links the currently bound GL_ARRAY_BUFFER to attribute `index` of the bound vao
 @(private)
 link_attrib :: proc(index: u32, components: i32, stride: i32, offset: uintptr) {
     gl.VertexAttribPointer(index, components, gl.FLOAT, false, stride, offset)
     gl.EnableVertexAttribArray(index)
 }
 
-// needs the GL context, so it runs before the context is destroyed
+// @note: needs the GL context, so it runs before the context is destroyed
 @(private)
 backend_deinit :: proc() {
     gl.DeleteBuffers(1, &gl_state.curves_ssbo)
@@ -138,7 +138,7 @@ backend_deinit :: proc() {
 
 @(private)
 upload_ssbo :: proc(ssbo: ^u32, binding: u32, data: []$T) {
-    // a reloaded font replaces the old buffer
+    // @note: a reloaded font replaces the old buffer
     if ssbo^ != 0 do gl.DeleteBuffers(1, ssbo)
 
     gl.GenBuffers(1, ssbo)
@@ -167,8 +167,8 @@ update_gpu_buffer :: proc(instances: []Draw_Instance) {
 
 @(private)
 set_shader_uniforms :: proc(physical_width, physical_height: i32) {
-    // the projection works in physical pixels, matching the buffer and font_px
-    // top = 0, so y grows downwards
+    // @note: the projection works in physical pixels, matching the buffer and font_px
+    // @note: top = 0, so y grows downwards
     ortho := linalg.matrix_ortho3d_f32(0, f32(physical_width), f32(physical_height), 0, -1, 1)
     view := linalg.MATRIX4F32_IDENTITY
     model := linalg.MATRIX4F32_IDENTITY

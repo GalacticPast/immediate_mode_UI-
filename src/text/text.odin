@@ -9,7 +9,7 @@ import stbtt "vendor:stb/truetype"
 
 Curve :: struct {
     p0: [4]f32,
-    p1: [4]f32, // control
+    p1: [4]f32, // @note: control
     p2: [4]f32,
 }
 
@@ -19,24 +19,24 @@ AABB2 :: struct {
 }
 
 NUMBER_OF_BANDS :: 8
-// glyph table is indexed directly by ASCII code. Control codes (0-31, 127) stay empty on purpose
+// @note: glyph table is indexed directly by ASCII code. Control codes (0-31, 127) stay empty on purpose
 TEXT_GLYPH_COUNT :: 128
-// a tab advances to the next multiple of this many spaces
+// @note: a tab advances to the next multiple of this many spaces
 TEXT_TAB_WIDTH :: 4
 
 Glyph_Data :: struct {
     translation_matrix: matrix[4, 4]f32,
-    // [start, end) into glyphs.curves
+    // @note: [start, end) into glyphs.curves
     curves_indicies:    [2]i32,
     aabb:               AABB2,
-    advance:            f32, // em
-    // Ranges of band entries in the glyphs' horizontal and vertical location arrays.
+    advance:            f32, // @note: em
+    // @note: Ranges of band entries in the glyphs' horizontal and vertical location arrays.
     h_band_loc_range:   [2]i32,
     v_band_loc_range:   [2]i32,
 }
 
 Glyphs :: struct {
-    funit_to_em:          f32, // usually 2048
+    funit_to_em:          f32, // @note: usually 2048
     ascent:               f32,
     descent:              f32,
     line_gap:             f32,
@@ -45,13 +45,13 @@ Glyphs :: struct {
     vertical_bands:       [dynamic]i32,
     horizontal_bands_loc: [dynamic][2]i32,
     vertical_bands_loc:   [dynamic][2]i32,
-    data:                 [TEXT_GLYPH_COUNT]Glyph_Data, // all of ascii
+    data:                 [TEXT_GLYPH_COUNT]Glyph_Data, // @note: all of ascii
     font_name:            string,
 }
 
 
 Text_State :: struct {
-    glyphs:    Glyphs, // for now there's only one
+    glyphs:    Glyphs, // @note: for now there's only one
     allocator: mem.Allocator,
 }
 
@@ -84,7 +84,7 @@ load_font :: proc(file_path: string) -> ^Glyphs {
 
     font_content, err := os.read_entire_file(file_path, allocator)
     fmt.assertf(err == nil && len(font_content) > 0, "couldnt read the font: %v", err)
-    // only stbtt reads it, and only inside this proc
+    // @note: only stbtt reads it, and only inside this proc
     defer delete(font_content, allocator)
 
     font_info: stbtt.fontinfo
@@ -106,13 +106,13 @@ load_font :: proc(file_path: string) -> ^Glyphs {
     g.line_gap = f32(line_gap) * g.funit_to_em
 
     for i in 0 ..< TEXT_GLYPH_COUNT {
-        // control codes map to .notdef (a box) in most fonts; leave them empty instead
+        // @note: control codes map to .notdef (a box) in most fonts; leave them empty instead
         if i < ' ' || i == 127 do continue
 
         glyph_index := stbtt.FindGlyphIndex(&font_info, rune(i))
         g_data := &g.data[i]
 
-        // the advance is needed even when there is no outline (space)
+        // @note: the advance is needed even when there is no outline (space)
         advance_funits, left_side_bearing: i32
         stbtt.GetGlyphHMetrics(&font_info, glyph_index, &advance_funits, &left_side_bearing)
         g_data.advance = f32(advance_funits) * g.funit_to_em
@@ -139,13 +139,13 @@ load_font :: proc(file_path: string) -> ^Glyphs {
                     append(&g.curves, Curve{p0 = curr_point, p1 = control_p, p2 = p_2})
                     curr_point = p_2
                 case .vcubic:
-                // TrueType outlines are quadratic only
+                // @note: TrueType outlines are quadratic only
             }
         }
         g_data.curves_indicies.y = i32(len(g.curves))
     }
 
-    // transform to em
+    // @note: transform to em
     for &c in g.curves {
         c.p0 *= g.funit_to_em
         c.p1 *= g.funit_to_em
@@ -154,8 +154,8 @@ load_font :: proc(file_path: string) -> ^Glyphs {
 
     compute_glyph_bbox(&g)
     // @warn:
-    // if there is a previous font that was loaded.
-    // But this would destroy the old one so
+    // @note: if there is a previous font that was loaded.
+    // @note: But this would destroy the old one so
     delete_glyphs(&t_state.glyphs)
     t_state.glyphs = g
 
@@ -168,7 +168,7 @@ get_current_font :: proc() -> ^Glyphs {
 
 @(private)
 solve_bezier :: proc(a, b, c, t: f32) -> f32 {
-    // (1 - t)^2 a, + 2 * t * ( 1 - t) * b + t * t * c
+    // @note: (1 - t)^2 a, + 2 * t * ( 1 - t) * b + t * t * c
     return (1 - t) * (1 - t) * a + 2 * t * (1 - t) * b + t * t * c
 }
 
@@ -186,11 +186,11 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
         max_p := [2]f32{-math.F32_MAX, -math.F32_MAX}
 
         for c in glyph_curves {
-            // p1 is the control point
+            // @note: p1 is the control point
             min_p = linalg.min(min_p, c.p0.xy, c.p2.xy)
             max_p = linalg.max(max_p, c.p0.xy, c.p2.xy)
 
-            // find the internal extremum on each axis
+            // @note: find the internal extremum on each axis
             for axis in 0 ..< 2 {
                 denom := c.p0[axis] - 2 * c.p1[axis] + c.p2[axis]
                 if denom == 0.0 do continue
@@ -214,7 +214,7 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
 
         eps: f32 = 1.0 / 1024.0
 
-        // horizontal banding
+        // @note: horizontal banding
         h_band_height := (max_p.y - min_p.y) / NUMBER_OF_BANDS
 
         data.h_band_loc_range.x = i32(len(g.horizontal_bands_loc))
@@ -224,10 +224,10 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
 
             x := i32(len(g.horizontal_bands))
             for c, j in glyph_curves {
-                // check if it is horizontal
+                // @note: check if it is horizontal
                 if abs(c.p0.y - c.p2.y) < 1e-6 && abs(c.p1.y - (c.p0.y + c.p2.y) * 0.5) < 1e-6 do continue
 
-                // check if the curve overlaps the band
+                // @note: check if the curve overlaps the band
                 if min(c.p0.y, c.p1.y, c.p2.y) <= band_max_y && max(c.p0.y, c.p1.y, c.p2.y) >= band_min_y {
                     append(&g.horizontal_bands, start + i32(j))
                 }
@@ -237,7 +237,7 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
         }
         data.h_band_loc_range.y = i32(len(g.horizontal_bands_loc))
 
-        // vertical banding
+        // @note: vertical banding
         v_band_width := (max_p.x - min_p.x) / NUMBER_OF_BANDS
         data.v_band_loc_range.x = i32(len(g.vertical_bands_loc))
         for b in 0 ..< NUMBER_OF_BANDS {
@@ -246,10 +246,10 @@ compute_glyph_bbox :: proc(g: ^Glyphs) {
 
             x := i32(len(g.vertical_bands))
             for c, j in glyph_curves {
-                // check if it is vertical
+                // @note: check if it is vertical
                 if abs(c.p0.x - c.p2.x) < 1e-5 && abs(c.p1.x - (c.p0.x + c.p2.x) * 0.5) < 1e-5 do continue
 
-                // check if the curve overlaps the band
+                // @note: check if the curve overlaps the band
                 if min(c.p0.x, c.p1.x, c.p2.x) <= band_max_x && max(c.p0.x, c.p1.x, c.p2.x) >= band_min_x {
                     append(&g.vertical_bands, start + i32(j))
                 }

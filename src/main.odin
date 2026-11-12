@@ -9,8 +9,8 @@ import gl "vendor:OpenGL"
 import pl "platform"
 import r "renderer"
 
-// A zero-width wrapper lets the first branch be built first while placing
-// both branches at the same x coordinate.
+// @note: A zero-width wrapper lets the first branch be built first while placing
+// @note: both branches at the same x coordinate.
 overlap_check :: proc(menu_first: bool, open: ^bool, last_action: ^string) {
     fixed := ui.Box_Desc {
         h_size = {type = .FIXED, value = 160},
@@ -63,12 +63,12 @@ overlap_check :: proc(menu_first: bool, open: ^bool, last_action: ^string) {
     }
 }
 
-// this feels so weird
-// comming from 'C' land where I literally had to write everything by hand
-// well I wrote everything :)
+// @note: this feels so weird
+// @note: comming from 'C' land where I literally had to write everything by hand
+// @note: well I wrote everything :)
 main :: proc() {
-    // the binary lives in bin/, assets/ is next to it. Run from the project root so
-    // relative asset paths work no matter where the app is launched from
+    // @note: the binary lives in bin/, assets/ is next to it. Run from the project root so
+    // @note: relative asset paths work no matter where the app is launched from
     exe_dir, err := os.get_executable_directory(context.temp_allocator)
     if err == nil {
         os.set_working_directory(os.dir(exe_dir))
@@ -80,7 +80,7 @@ main :: proc() {
         return
     }
 
-    // the text shader outputs coverage as alpha
+    // @note: the text shader outputs coverage as alpha
     gl.Enable(gl.BLEND)
     gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
@@ -149,7 +149,7 @@ main :: proc() {
             }
         }
 
-        // Space makes the press and release deterministic even on slow frames.
+        // @note: Space makes the press and release deterministic even on slow frames.
         synthetic_press := pl.Event {
             type = .MOUSE_BTN_PRESSED,
             key  = .BTN_LEFT,
@@ -181,6 +181,9 @@ main :: proc() {
             if show_clipping_checks {
                 clipping_checks(&clipping_action)
             } else if ui.panel("panel", description) {
+                if ui.scroll_region("view") {
+
+                }
                 ui.label("INPUT: click overlapping menu items; status should name the item")
                 ui.label("Menu built before underlying button")
                 overlap_check(true, &first_menu_open, &last_action)
@@ -289,7 +292,7 @@ main :: proc() {
 
         ui_draw_commands := ui.build_draw_commands()
 
-        // draw
+        // @note: draw
 
         gl.ClearColor(0, 0, 0, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT)

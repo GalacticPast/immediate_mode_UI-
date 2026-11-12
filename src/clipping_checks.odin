@@ -2,8 +2,8 @@ package main
 
 import ui "ui"
 
-// The red areas mark the parts of each button that extend past a clipping ancestor.
-// They are drawn first so the test buttons remain above them in draw order.
+// @note: The red areas mark the parts of each button that extend past a clipping ancestor.
+// @note: They are drawn first so the test buttons remain above them in draw order.
 clipping_checks :: proc(last_action: ^string) {
     screen := ui.Box_Desc {
         h_size = {type = .BASED_ON_PARENT_PCT, value = 1},

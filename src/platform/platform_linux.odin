@@ -8,7 +8,7 @@ import egl "vendor:egl"
 import wl "wayland"
 
 Platform_Linux_State :: struct {
-    /* Globals */
+    /* @note: Globals */
     display:                     ^wl.display,
     registry:                    ^wl.registry,
     proxy:                       ^wl.proxy,
@@ -17,7 +17,7 @@ Platform_Linux_State :: struct {
     seat:                        ^wl.seat,
 
 
-    // objects
+    // @note: objects
     xdg_wm_base:                 ^wl.xdg_wm_base,
     xdg_surface:                 ^wl.xdg_surface,
     xdg_toplevel:                ^wl.xdg_toplevel,
@@ -34,23 +34,23 @@ Platform_Linux_State :: struct {
     wp_fractional_scale:         ^wl.wp_fractional_scale_v1,
     wp_viewport:                 ^wl.wp_viewport,
 
-    // window specific
+    // @note: window specific
     egl_context:                 egl.Context,
     egl_display:                 egl.Display,
     egl_window:                  ^wl.egl_window,
     egl_surface:                 egl.Surface,
     egl_config:                  egl.Config,
 
-    // idk what this is for now
+    // @note: idk what this is for now
     callback:                    ^wl.callback,
     output:                      ^wl.output,
 
-    // surface
+    // @note: surface
     width:                       i32,
     height:                      i32,
     display_scale:               f32,
 
-    // idk if this should be here at all
+    // @note: idk if this should be here at all
     deadline:                    time.Tick,
 }
 @(private = "file")
@@ -61,7 +61,7 @@ k_listener: wl.keyboard_listener = {
         defer (linux.close(cast(linux.Fd)fd))
         map_shm, err := linux.mmap(0, (uint)(size), {.READ}, {.PRIVATE}, cast(linux.Fd)fd, 0)
         if err != .NONE {
-            // well tf am I supposed to do
+            // @todo: well tf am I supposed to do
             return
         }
         defer (linux.munmap(map_shm, (uint)(size)))
@@ -81,24 +81,24 @@ k_listener: wl.keyboard_listener = {
     enter = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface, keys: ^wl.array) {  },
     leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {  },
     key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, time, key, state: u32) {
-        // I have no idea why I need to add 8 but the docs say so I guess
-        // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
+        // @note: I have no idea why I need to add 8 but the docs say so I guess
+        // @note: https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
         ctx := p_state.t_context
         if ctx == nil do return
-        // set the context
+        // @note: set the context
         context = ctx^
 
         keycode := key + 8
         sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
-        //@info: incomplete
+        //@todo: incomplete
         k_type := translate_key_code(sym)
-        e := new(Event) // @perf: pointer dangling
+        e := new(Event) // @warn: pointer dangling
         e.key = k_type
 
         switch state {
             case 0:
                 e.type = .KEY_RELEASE
-            // idk how to do key repeats for now
+            // @todo: idk how to do key repeats for now
             case 1, 2:
                 e.type = .KEY_PRESS
             case:
@@ -110,7 +110,7 @@ k_listener: wl.keyboard_listener = {
     repeat_info = proc "c" (data: rawptr, keyboard: ^wl.keyboard, rate, delay: i32) {  },
 }
 
-// Events up to version 10. Which ones arrive depends on the seat version we bind.
+// @note: Events up to version 10. Which ones arrive depends on the seat version we bind.
 BTN_LEFT :: 0x110
 BTN_RIGHT :: 0x111
 BTN_MIDDLE :: 0x112
@@ -128,7 +128,7 @@ p_listener: wl.pointer_listener = {
 
         ctx := p_state.t_context
         if ctx == nil do return
-        // set the context
+        // @note: set the context
         context = ctx^
         e := new(Event) // @perf:
         e.pos = {i32(mouse_x), i32(mouse_y)}
@@ -138,7 +138,7 @@ p_listener: wl.pointer_listener = {
     button = proc "c" (data: rawptr, pointer: ^wl.pointer, serial, time, button, state: u32) {
         ctx := p_state.t_context
         if ctx == nil do return
-        // set the context
+        // @note: set the context
         context = ctx^
         e := new(Event) // @perf:
         e.type = .MOUSE_BTN_RELEASED if state == 0 else .MOUSE_BTN_PRESSED
@@ -146,13 +146,13 @@ p_listener: wl.pointer_listener = {
         push_event(e)
     },
     axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {  },
-    frame = proc "c" (data: rawptr, pointer: ^wl.pointer) {  },                                             // v5
-    axis_source = proc "c" (data: rawptr, pointer: ^wl.pointer, axis_source: u32) {  },                     // v5
-    axis_stop = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32) {  },                        // v5
-    axis_discrete = proc "c" (data: rawptr, pointer: ^wl.pointer, axis: u32, discrete: i32) {  },           // v5-7
-    axis_value120 = proc "c" (data: rawptr, pointer: ^wl.pointer, axis: u32, value120: i32) {  },           // v8
-    axis_relative_direction = proc "c" (data: rawptr, pointer: ^wl.pointer, axis, direction: u32) {  },     // v9
-    warp = proc "c" (data: rawptr, pointer: ^wl.pointer, x, y: wl.fixed) {  },                              // v10
+    frame = proc "c" (data: rawptr, pointer: ^wl.pointer) {  },                                             // @note: v5
+    axis_source = proc "c" (data: rawptr, pointer: ^wl.pointer, axis_source: u32) {  },                     // @note: v5
+    axis_stop = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32) {  },                        // @note: v5
+    axis_discrete = proc "c" (data: rawptr, pointer: ^wl.pointer, axis: u32, discrete: i32) {  },           // @note: v5-7
+    axis_value120 = proc "c" (data: rawptr, pointer: ^wl.pointer, axis: u32, value120: i32) {  },           // @note: v8
+    axis_relative_direction = proc "c" (data: rawptr, pointer: ^wl.pointer, axis, direction: u32) {  },     // @note: v9
+    warp = proc "c" (data: rawptr, pointer: ^wl.pointer, x, y: wl.fixed) {  },                              // @note: v10
 }
 
 x_base_listener: wl.xdg_wm_base_listener = {
@@ -228,7 +228,7 @@ r_listener: wl.registry_listener = {
                     &wl.wp_cursor_shape_manager_v1_interface,
                     version,
                 )
-            // zamn for real it really came later on
+            // @note: zamn for real it really came later on
         }
     },
     global_remove = proc "c" (data: rawptr, registry: ^wl.registry, name: u32) {
@@ -252,12 +252,12 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
         }
     },
     close = proc "c" (data: rawptr, toplevel: ^wl.xdg_toplevel) {
-        // closing the window
+        // @note: closing the window
         if p_state.t_context == nil {
             return
         }
         context = p_state.t_context^
-        e := new(Event) // @perf: dangling
+        e := new(Event) // @warn: dangling
         e.type = .WINDOW_CLOSE
         push_event(e)
     },
@@ -266,7 +266,7 @@ xdg_t_listener: wl.xdg_toplevel_listener = {
 }
 
 wp_fractional_scale_listener: wl.wp_fractional_scale_v1_listener = {
-    // The scale numerator over a denominator of 120, so 1.5 arrives as 180.
+    // @note: The scale numerator over a denominator of 120, so 1.5 arrives as 180.
     preferred_scale = proc "c" (data: rawptr, fractional_scale: ^wl.wp_fractional_scale_v1, scale: u32) {
         p_l_state.display_scale = (f32)(scale) / 120.0
     },
@@ -274,7 +274,7 @@ wp_fractional_scale_listener: wl.wp_fractional_scale_v1_listener = {
 
 startup :: proc(width, height: i32) -> (ok: bool) {
 
-    // for now @temp
+    // @todo: for now @temp
     p_l_state.width = width
     p_l_state.height = height
 
@@ -343,7 +343,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 
     wl.surface_commit(p_l_state.surface)
 
-    // opengl
+    // @note: opengl
 
     p_l_state.egl_display = egl.GetPlatformDisplay(.WAYLAND_KHR, p_l_state.display, nil)
     if p_l_state.egl_display == egl.NO_DISPLAY {
@@ -460,8 +460,8 @@ startup :: proc(width, height: i32) -> (ok: bool) {
         return false
     }
 
-    // The compositor sends preferred_scale only after the surface has shown a frame, so show one frame and
-    // then read the events it sent back.
+    // @note: The compositor sends preferred_scale only after the surface has shown a frame, so show one frame and
+    // @note: then read the events it sent back.
     egl.SwapBuffers(p_l_state.egl_display, p_l_state.egl_surface)
     wl.display_roundtrip(p_l_state.display)
 
@@ -482,7 +482,7 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 
     wl.surface_commit(p_l_state.surface)
 
-    // request the first frame deadline right here so that we dont sleep on it
+    // @note: request the first frame deadline right here so that we dont sleep on it
     request_deadline(time.tick_now())
     return true
 
@@ -508,12 +508,12 @@ dispatch :: proc() -> bool {
     }
 
     if ready > 0 {
-        // also fails here if the compositor hung up (ERR / HUP)
+        // @note: also fails here if the compositor hung up (ERR / HUP)
         if wl.display_read_events(p_l_state.display) == -1 {
             return false
         }
     } else {
-        // timed out or interrupted by a signal, nothing to read
+        // @note: timed out or interrupted by a signal, nothing to read
         wl.display_cancel_read(p_l_state.display)
     }
 
@@ -536,14 +536,14 @@ get_display_scale :: proc() -> f32 {
 set_cursor_icon :: proc(type: Pointer_Type) {
     cursor := translate_cursor_code(type)
     if p_l_state.pointer == nil || p_l_state.wp_cursor_shape_device == nil do return
-    if type == .NONE {     // hide the cursor
+    if type == .NONE {     // @note: hide the cursor
         wl.pointer_set_cursor(p_l_state.pointer, p_l_state.pointer_serial, nil, 0, 0)
     } else {
         wl.wp_cursor_shape_device_v1_set_shape(p_l_state.wp_cursor_shape_device, p_l_state.pointer_serial, cursor)
     }
 }
 
-// physical framebuffer size
+// @note: physical framebuffer size
 get_framebuffer_size :: proc() -> (i32, i32) {
     return cast(i32)(cast(f32)p_l_state.width * p_l_state.display_scale),
         cast(i32)(cast(f32)p_l_state.height * p_l_state.display_scale)

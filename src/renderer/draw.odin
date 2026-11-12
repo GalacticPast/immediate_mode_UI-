@@ -7,10 +7,10 @@ import "core:math"
 Draw_Instance :: struct {
     pen_offset:         [2]f32,
     curve_indices:      [2]f32,
-    color_and_font_px:  [4]f32, // the last value of color is the font size
+    color_and_font_px:  [4]f32, // @note: the last value of color is the font size
     bands_location:     [4]f32,
     translation_matrix: matrix[4, 4]f32,
-    clip_rect:          [4]f32, // top-left position and dimensions, in physical pixels
+    clip_rect:          [4]f32, // @note: top-left position and dimensions, in physical pixels
 }
 
 Rect :: struct {
@@ -20,21 +20,21 @@ Rect :: struct {
 
 Draw_State :: struct {
     glyphs:     ^text.Glyphs,
-    // Buffers retain their storage across frames and are released in deinit.
+    // @note: Buffers retain their storage across frames and are released in deinit.
 
-    // the final buffer that gets uploaded to the gpu
+    // @note: the final buffer that gets uploaded to the gpu
     gpu_buffer: [dynamic]Draw_Instance,
 }
 
 d_state: Draw_State
 
-// The allocator must remain valid until deinit; buffers are reused across frames.
+// @note: The allocator must remain valid until deinit; buffers are reused across frames.
 init :: proc(allocator := context.allocator) {
     backend_init()
     // @info: this is kinda wackk
     d_state.glyphs = text.get_current_font()
-    // increased the backing buffer so that the array wont need to keep resizing,
-    // could introduce a limit later on
+    // @note: increased the backing buffer so that the array wont need to keep resizing,
+    // @note: could introduce a limit later on
     d_state.gpu_buffer = make([dynamic]Draw_Instance, 0, 4098, allocator)
 }
 deinit :: proc() {
@@ -52,12 +52,12 @@ line_height :: proc() -> f32 {
     return g.ascent - g.descent + g.line_gap
 }
 
-// Distance from the top of a text line to its baseline, in logical pixels.
+// @note: Distance from the top of a text line to its baseline, in logical pixels.
 text_baseline_offset :: proc(font_size: f32) -> f32 {
     return d_state.glyphs.ascent * font_size
 }
 
-// bytes outside ASCII (e.g. UTF-8 lead bytes) fall back to '?'
+// @note: bytes outside ASCII (e.g. UTF-8 lead bytes) fall back to '?'
 get_glyph :: proc(c: u8) -> ^text.Glyph_Data {
     code := c
     if code >= text.TEXT_GLYPH_COUNT do code = '?'
@@ -69,7 +69,7 @@ next_tab_stop :: proc(pen_x: f32, font_size: f32) -> f32 {
     return (math.floor(pen_x / tab) + 1.0) * tab
 }
 
-// no wrapping: only '\n' starts a new line
+// @note: no wrapping: only '\n' starts a new line
 calculate_text_size :: proc(str: string, font_size: f32) -> [2]f32 {
     line_width: f32 = 0.0
     max_width: f32 = 0.0
@@ -94,8 +94,8 @@ calculate_text_size :: proc(str: string, font_size: f32) -> [2]f32 {
     return {max_width, f32(line_count) * line_height() * font_size}
 }
 
-// wrap_width is measured from position.x; 0 disables wrapping
-// missing support for multiple font_sizes in the text itself.
+// @note: wrap_width is measured from position.x; 0 disables wrapping
+// @todo: missing support for multiple font_sizes in the text itself.
 
 push :: proc {
     push_text,
@@ -117,11 +117,11 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             continue
         }
         if c == '\t' {
-            // tab stops are measured from the start of the string, not the window edge
+            // @note: tab stops are measured from the start of the string, not the window edge
             pen_pos.x = pos_px.x + next_tab_stop(pen_pos.x - pos_px.x, font_px)
             continue
         }
-        // '\r' and every other control code: no glyph, no advance
+        // @note: '\r' and every other control code: no glyph, no advance
         if c < ' ' || c == 127 do continue
 
         g := get_glyph(c)
@@ -132,9 +132,9 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
         }
 
         // @perf: cache it:
-        // all of this could be calculated at the font loading, and every frame we would only need to update the pen_offset
+        // @note: all of this could be calculated at the font loading, and every frame we would only need to update the pen_offset
         instance := Draw_Instance {
-            // pen goes to em here, so only the pen is scaled. The matrix is already in em
+            // @note: pen goes to em here, so only the pen is scaled. The matrix is already in em
             pen_offset         = pen_pos / font_px,
             curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
             color_and_font_px  = {color.r, color.g, color.b, font_px},
@@ -174,7 +174,7 @@ push_rect :: proc(r: Rect, color: [3]f32, clip: Rect) {
 }
 
 end_command :: proc() {
-    // does nothing
+    // @note: does nothing
 }
 
 render :: proc() {

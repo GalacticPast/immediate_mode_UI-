@@ -1,18 +1,18 @@
 package wayland
 
-// Bindings for libwayland-client and libwayland-egl.
+// @note: Bindings for libwayland-client and libwayland-egl.
 //
-// The C headers implement every request (compositor_create_surface, xdg_surface_get_toplevel, ...)
-// as a static inline wrapper around proxy_marshal_flags, so those names don't exist in the library.
-// The wrappers below are hand translations of those inline functions.
+// @note: The C headers implement every request (compositor_create_surface, xdg_surface_get_toplevel, ...)
+// @note: as a static inline wrapper around proxy_marshal_flags, so those names don't exist in the library.
+// @note: The wrappers below are hand translations of those inline functions.
 
 import "core:c"
 
 foreign import wayland_client "system:wayland-client"
 foreign import wayland_egl "system:wayland-egl"
 
-// Opaque handle types. At runtime every one of these points to a proxy inside libwayland;
-// the distinct types only stop us from mixing them up.
+// @note: Opaque handle types. At runtime every one of these points to a proxy inside libwayland;
+// @note: the distinct types only stop us from mixing them up.
 proxy :: struct {}
 display :: struct {}
 registry :: struct {}
@@ -29,7 +29,7 @@ xdg_surface :: struct {}
 xdg_toplevel :: struct {}
 egl_window :: struct {}
 
-// 24.8 signed fixed point, used for pointer coordinates and scroll amounts
+// @note: 24.8 signed fixed point, used for pointer coordinates and scroll amounts
 fixed :: i32
 
 fixed_to_f32 :: #force_inline proc "contextless" (value: fixed) -> f32 {
@@ -42,7 +42,7 @@ array :: struct {
     data:  rawptr,
 }
 
-// wayland-util.h
+// @note: wayland-util.h
 message :: struct {
     name:      cstring,
     signature: cstring,
@@ -71,7 +71,7 @@ POINTER_BUTTON_STATE_RELEASED :: 0
 POINTER_AXIS_VERTICAL_SCROLL :: 0
 POINTER_AXIS_HORIZONTAL_SCROLL :: 1
 
-// Linux evdev button codes (linux/input-event-codes.h)
+// @note: Linux evdev button codes (linux/input-event-codes.h)
 BTN_LEFT :: 0x110
 BTN_RIGHT :: 0x111
 BTN_MIDDLE :: 0x112
@@ -80,7 +80,7 @@ BTN_EXTRA :: 0x114
 
 @(default_calling_convention = "c", link_prefix = "wl_")
 foreign wayland_client {
-    // Interface descriptions for the core protocol, exported as data by the library
+    // @note: Interface descriptions for the core protocol, exported as data by the library
     registry_interface: interface
     compositor_interface: interface
     surface_interface: interface
@@ -113,7 +113,7 @@ foreign wayland_egl {
     egl_window_resize :: proc(window: ^egl_window, width, height, dx, dy: c.int) ---
 }
 
-// Listeners: one callback per event, in the order the protocol XML defines them.
+// @note: Listeners: one callback per event, in the order the protocol XML defines them.
 
 registry_listener :: struct {
     global:        proc "c" (data: rawptr, registry: ^registry, name: u32, interface: cstring, version: u32),
@@ -134,28 +134,28 @@ keyboard_listener :: struct {
     repeat_info: proc "c" (data: rawptr, keyboard: ^keyboard, rate, delay: i32),
 }
 
-// Events up to version 10. Which ones arrive depends on the seat version we bind.
+// @note: Events up to version 10. Which ones arrive depends on the seat version we bind.
 pointer_listener :: struct {
     enter:                   proc "c" (data: rawptr, pointer: ^pointer, serial: u32, surface: ^surface, x, y: fixed),
     leave:                   proc "c" (data: rawptr, pointer: ^pointer, serial: u32, surface: ^surface),
     motion:                  proc "c" (data: rawptr, pointer: ^pointer, time: u32, x, y: fixed),
     button:                  proc "c" (data: rawptr, pointer: ^pointer, serial, time, button, state: u32),
     axis:                    proc "c" (data: rawptr, pointer: ^pointer, time, axis: u32, value: fixed),
-    frame:                   proc "c" (data: rawptr, pointer: ^pointer),                           // v5
-    axis_source:             proc "c" (data: rawptr, pointer: ^pointer, axis_source: u32),         // v5
-    axis_stop:               proc "c" (data: rawptr, pointer: ^pointer, time, axis: u32),          // v5
-    axis_discrete:           proc "c" (data: rawptr, pointer: ^pointer, axis: u32, discrete: i32), // v5-7
-    axis_value120:           proc "c" (data: rawptr, pointer: ^pointer, axis: u32, value120: i32), // v8
-    axis_relative_direction: proc "c" (data: rawptr, pointer: ^pointer, axis, direction: u32),     // v9
-    warp:                    proc "c" (data: rawptr, pointer: ^pointer, x, y: fixed),              // v10
+    frame:                   proc "c" (data: rawptr, pointer: ^pointer),                           // @note: v5
+    axis_source:             proc "c" (data: rawptr, pointer: ^pointer, axis_source: u32),         // @note: v5
+    axis_stop:               proc "c" (data: rawptr, pointer: ^pointer, time, axis: u32),          // @note: v5
+    axis_discrete:           proc "c" (data: rawptr, pointer: ^pointer, axis: u32, discrete: i32), // @note: v5-7
+    axis_value120:           proc "c" (data: rawptr, pointer: ^pointer, axis: u32, value120: i32), // @note: v8
+    axis_relative_direction: proc "c" (data: rawptr, pointer: ^pointer, axis, direction: u32),     // @note: v9
+    warp:                    proc "c" (data: rawptr, pointer: ^pointer, x, y: fixed),              // @note: v10
 }
 
-// Events up to version 6.
+// @note: Events up to version 6.
 surface_listener :: struct {
     enter:                      proc "c" (data: rawptr, surface: ^surface, output: ^output),
     leave:                      proc "c" (data: rawptr, surface: ^surface, output: ^output),
-    preferred_buffer_scale:     proc "c" (data: rawptr, surface: ^surface, factor: i32),    // v6
-    preferred_buffer_transform: proc "c" (data: rawptr, surface: ^surface, transform: u32), // v6
+    preferred_buffer_scale:     proc "c" (data: rawptr, surface: ^surface, factor: i32),    // @note: v6
+    preferred_buffer_transform: proc "c" (data: rawptr, surface: ^surface, transform: u32), // @note: v6
 }
 
 callback_listener :: struct {
@@ -177,7 +177,7 @@ xdg_toplevel_listener :: struct {
     wm_capabilities:  proc "c" (data: rawptr, toplevel: ^xdg_toplevel, capabilities: ^array),
 }
 
-// Requests. Opcodes are the request's index in the protocol XML (the #defines in the generated headers).
+// @note: Requests. Opcodes are the request's index in the protocol XML (the #defines in the generated headers).
 
 version_of :: proc "contextless" (object: rawptr) -> u32 {
     return proxy_get_version((^proxy)(object))
@@ -201,8 +201,8 @@ display_get_registry :: proc "contextless" (display: ^display) -> ^registry {
     )
 }
 
-// registry.bind has signature "usun": the new_id has no fixed type, so the interface name and
-// version are sent explicitly before it.
+// @note: registry.bind has signature "usun": the new_id has no fixed type, so the interface name and
+// @note: version are sent explicitly before it.
 registry_bind :: proc "contextless" (registry: ^registry, name: u32, interface: ^interface, version: u32) -> rawptr {
     REGISTRY_BIND :: 0
     return proxy_marshal_flags(
@@ -242,7 +242,7 @@ surface_commit :: proc "contextless" (surface: ^surface) {
     proxy_marshal_flags((^proxy)(surface), SURFACE_COMMIT, nil, version_of(surface), 0)
 }
 
-// Asks for a "done" event when it is a good time to draw the next frame. Applies on the next commit.
+// @note: Asks for a "done" event when it is a good time to draw the next frame. Applies on the next commit.
 surface_frame :: proc "contextless" (surface: ^surface) -> ^callback {
     SURFACE_FRAME :: 3
     return (^callback)(
@@ -257,7 +257,7 @@ surface_frame :: proc "contextless" (surface: ^surface) -> ^callback {
     )
 }
 
-// Since version 3. Applies on the next commit, so it must go together with a buffer of matching size.
+// @note: Since version 3. Applies on the next commit, so it must go together with a buffer of matching size.
 surface_set_buffer_scale :: proc "contextless" (surface: ^surface, scale: i32) {
     SURFACE_SET_BUFFER_SCALE :: 8
     proxy_marshal_flags((^proxy)(surface), SURFACE_SET_BUFFER_SCALE, nil, version_of(surface), 0, scale)
@@ -270,7 +270,7 @@ seat_get_pointer :: proc "contextless" (seat: ^seat) -> ^pointer {
     )
 }
 
-// A nil surface hides the cursor. `serial` must be the one from the latest pointer.enter.
+// @note: A nil surface hides the cursor. `serial` must be the one from the latest pointer.enter.
 pointer_set_cursor :: proc "contextless" (
     pointer: ^pointer,
     serial: u32,
@@ -291,7 +291,7 @@ pointer_set_cursor :: proc "contextless" (
     )
 }
 
-// pointer.release only exists since version 3.
+// @note: pointer.release only exists since version 3.
 pointer_release :: proc "contextless" (pointer: ^pointer) {
     POINTER_RELEASE :: 1
     if version_of(pointer) >= 3 {
@@ -308,7 +308,7 @@ seat_get_keyboard :: proc "contextless" (seat: ^seat) -> ^keyboard {
     )
 }
 
-// keyboard.release only exists since version 3; older keyboards can only be destroyed client side.
+// @note: keyboard.release only exists since version 3; older keyboards can only be destroyed client side.
 keyboard_release :: proc "contextless" (keyboard: ^keyboard) {
     KEYBOARD_RELEASE :: 0
     if version_of(keyboard) >= 3 {

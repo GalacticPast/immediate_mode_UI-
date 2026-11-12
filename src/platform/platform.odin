@@ -6,10 +6,10 @@ import "core:time"
 
 Event_Type :: enum {
     NONE = 0,
-    // window events
+    // @note: window events
     WINDOW_CLOSE,
     WINDOW_RESIZE,
-    // input events
+    // @note: input events
     KEY_PRESS,
     KEY_RELEASE,
     KEY_REPEAT,
@@ -147,7 +147,7 @@ Key_Type :: enum {
     PERIOD       = 0xBE,
     SLASH        = 0xBF,
     GRAVE        = 0xC0,
-    // copied from linux/linux_event_codes.h
+    // @note: copied from linux/linux_event_codes.h
     BTN_LEFT     = 0x110,
     BTN_RIGHT    = 0x111,
     BTN_MIDDLE   = 0x112,
@@ -171,9 +171,9 @@ Event_List :: struct {
 
 Platform_State :: struct {
     list:      Event_List,
-    // has the allocator been set or not
-    // this has to be set for every time the calles calls get_events
-    // and needs to be unset
+    // @note: has the allocator been set or not
+    // @note: this has to be set for every time the calles calls get_events
+    // @note: and needs to be unset
     t_context: ^runtime.Context,
 }
 
@@ -186,10 +186,10 @@ get_events :: proc() -> Event_List {
     p_state.t_context = &ctx
     defer { p_state.t_context = nil }
 
-    // reset the list
+    // @note: reset the list
     p_state.list = {}
 
-    // do the dispatch
+    // @note: do the dispatch
     result := dispatch()
     if !result {
         fmt.eprintln("lol")
@@ -198,8 +198,8 @@ get_events :: proc() -> Event_List {
     return p_state.list
 }
 
-// do we need to make it contextless?
-// expects fresh, unlinked node
+// @note: do we need to make it contextless?
+// @note: expects fresh, unlinked node
 @(private)
 insert_ll :: proc(list: ^Event_List, node: ^Event) {
     if node == nil do return
@@ -238,7 +238,7 @@ push_event :: proc(e: ^Event) {
     insert_ll(&p_state.list, e)
 }
 
-// -1 = no deadline, sleep until an event. 0 = deadline already passed, don't sleep.
+// @note: -1 = no deadline, sleep until an event. 0 = deadline already passed, don't sleep.
 poll_timeout_ms :: proc(deadline: time.Tick) -> i32 {
     if deadline == {} {
         return -1
@@ -249,8 +249,8 @@ poll_timeout_ms :: proc(deadline: time.Tick) -> i32 {
         return 0
     }
 
-    // round up, otherwise a deadline 0.4 ms away becomes poll(0) and the loop spins
+    // @note: round up, otherwise a deadline 0.4 ms away becomes poll(0) and the loop spins
     ms: i64 = cast(i64)((remaining + time.Millisecond - 1) / time.Millisecond)
-    // cap it so the cast can't overflow, we recompute every wake anyway
+    // @note: cap it so the cast can't overflow, we recompute every wake anyway
     return cast(i32)min(ms, 60_000)
 }

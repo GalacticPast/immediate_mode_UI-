@@ -5,7 +5,7 @@ import "core:testing"
 
 @(test)
 pressing_visible_part_of_widget_updates_interaction_state :: proc(t: ^testing.T) {
-    // The Linux platform leaves cursor updates as no-ops before startup.
+    // @test: The Linux platform leaves cursor updates as no-ops before startup.
     when ODIN_OS == .Linux {
         sync.mutex_lock(&clipping_test_mutex)
         defer sync.mutex_unlock(&clipping_test_mutex)

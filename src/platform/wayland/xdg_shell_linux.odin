@@ -1,20 +1,20 @@
 package wayland
 
-// Interface descriptions for the xdg-shell protocol.
+// @note: Interface descriptions for the xdg-shell protocol.
 //
-// libwayland only ships the core protocol, so C projects run
-// `wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml`
-// to generate these tables. They are translated by hand here. Request and event order (and so the
-// opcodes) must match the XML exactly. Only the object-type slots we need are filled in; we never
-// create positioners or popups.
+// @note: libwayland only ships the core protocol, so C projects run
+// @note: `wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml`
+// @note: to generate these tables. They are translated by hand here. Request and event order (and so the
+// @warn: opcodes) must match the XML exactly. Only the object-type slots we need are filled in; we never
+// @note: create positioners or popups.
 
 @(private = "file")
-get_xdg_surface_types := [2]^interface{&xdg_surface_interface, nil} // [1] = &surface_interface, set in init below
+get_xdg_surface_types := [2]^interface{&xdg_surface_interface, nil} // @note: [1] = &surface_interface, set in init below
 @(private = "file")
 get_toplevel_types := [1]^interface{&xdg_toplevel_interface}
 
-// surface_interface is a variable inside libwayland, so its address is only known once the program
-// is loaded.
+// @note: surface_interface is a variable inside libwayland, so its address is only known once the program
+// @note: is loaded.
 @(init, private = "file")
 init_xdg_shell_types :: proc "contextless" () {
     get_xdg_surface_types[1] = &surface_interface

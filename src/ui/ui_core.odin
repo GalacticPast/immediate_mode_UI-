@@ -3,7 +3,6 @@ package ui
 import pl "../platform"
 import r "../renderer"
 import "base:runtime"
-import "core:fmt"
 import "core:hash"
 import "core:mem"
 import "core:slice"
@@ -18,19 +17,21 @@ Text_Align_Flag :: enum {
 
 WIDGET_FLAG :: enum {
     NONE,
-    // actions
+    // @note: actions
     PRESSABLE,
     HOVERABLE,
     DRAGGABLE,
     RESIZABLE,
     GRABBABLE,
 
-    // types
+    // @note: types
     CLIP,
     FLOATING_X,
     FLOATING_Y,
+    SCROLLABLE_X,
+    SCROLLABLE_Y,
 
-    // draws
+    // @note: draws
     DRAW_TEXT,
     DRAW_RECT,
     DRAW_BORDER,
@@ -44,9 +45,9 @@ Size_Type :: enum {
     FIXED,
     BASED_ON_TEXT,
     BASED_ON_CHILDREN_SUM,
-    BASED_ON_PARENT_PCT, // percentage of parent given that the parent has FIXED SIZE TYPE
+    BASED_ON_PARENT_PCT, // @note: percentage of parent given that the parent has FIXED SIZE TYPE
 }
-// it will default to vertical
+// @note: it will default to vertical
 Axis_Type :: enum {
     VERTICAL,
     HORIZONTAL,
@@ -54,36 +55,36 @@ Axis_Type :: enum {
 
 Size :: struct {
     type:       Size_Type,
-    value:      f32, // if its parent percentage then the value should be between [0,1] inclusive
-    strictness: f32, // 1 means it will never shrink and 0 means it will shrink fully
+    value:      f32, // @note: if its parent percentage then the value should be between [0,1] inclusive
+    strictness: f32, // @note: 1 means it will never shrink and 0 means it will shrink fully
 }
 
 Box :: struct {
-    // this should persist between draws
+    // @note: this should persist between draws
     key:                             u64,
-    build_index:                     u64, // up to which version did we build it
+    build_index:                     u64, // @note: up to which version did we build it
 
-    // per build
-    // first/last -> children
+    // @note: per build
+    // @note: first/last -> children
     prev, next, parent, first, last: ^Box,
     child_count:                     u32,
-    h_size:                          Size, // horizontal size
-    v_size:                          Size, // vertical size
+    h_size:                          Size, // @note: horizontal size
+    v_size:                          Size, // @note: vertical size
     flags:                           Widget_Flags,
     text_align_flag:                 Text_Align_Flag,
     children_layout_axis:            Axis_Type,
     title:                           string,
 
-    // atached every_frame
+    // @note: atached every_frame
     custom_draw:                     proc(elem: ^Box, value: rawptr),
     custom_data:                     rawptr,
 
-    //signals
+    // @note: signals
     hovered:                         bool,
     clicked:                         bool,
 
 
-    //after build
+    // @note: after build
     pos:                             [2]f32,
     dimensions:                      [2]f32,
     color:                           [3]f32,
@@ -92,7 +93,7 @@ Box :: struct {
 Box_Desc :: struct {
     h_size:               Maybe(Size),
     v_size:               Maybe(Size),
-    pos:                  Maybe([2]f32), // to set the position you have to set FLOATING_X/FLOATING_Y in flags
+    pos:                  Maybe([2]f32), // @note: to set the position you have to set FLOATING_X/FLOATING_Y in flags
     flags:                Maybe(Widget_Flags),
     children_layout_axis: Maybe(Axis_Type),
     text_algin_flag:      Maybe(Text_Align_Flag),
@@ -121,7 +122,7 @@ Draw_Command :: struct {
 @(private)
 State :: struct {
     arena:                mem.Dynamic_Arena,
-    allocator:            runtime.Allocator, // from arena
+    allocator:            runtime.Allocator, // @note: from arena
     frame_allocator:      runtime.Allocator,
     tree:                 map[u64]^Box,
     curr_parent:          [dynamic]^Box,
@@ -131,49 +132,21 @@ State :: struct {
     font_size:            f32,
     debug:                bool,
 
-    // frame specific
+    // @note: frame specific
     root:                 ^Box,
     events:               pl.Event_List,
 
-    // this one gets cached
-    prev_frame_mouse_pos: [2]i32, // hmm is this guaranteed though ? what if we were sleeping and just woke up
+    // @note: this one gets cached
+    prev_frame_mouse_pos: [2]i32, // @note: hmm is this guaranteed though ? what if we were sleeping and just woke up
     mouse_pos:            [2]i32,
     mouse_dx:             [2]i32,
 
-    // transient
+    // @note: transient
     active_widget_key:    u64,
     hot_widget_key:       u64,
-    inside_floating:      bool,        // @temp:
-    mouse_btn_press:      pl.Key_Type, // this is short lived
+    inside_floating:      bool,        // @todo: @temp:
+    mouse_btn_press:      pl.Key_Type, // @note: this is short lived
     mouse_btn_held:       pl.Key_Type,
-}
-
-@(private)
-Check_Box_Data :: struct {
-    value: ^bool, // passed by the user
-}
-
-Checkbox_Padding :: 5
-Checkbox_Square :: 10
-
-@(private)
-Radio_Box_Data :: struct {
-    value:      ^u32,
-    identifier: u32,
-}
-
-Sliderbox_Padding :: 15
-
-@(private)
-Slider_Box_Data :: struct {
-    value: ^f32,
-    min:   f32,
-    max:   f32,
-}
-
-@(private)
-Collapsable_Box_Data :: struct {
-    value: ^bool,
 }
 
 @(private)
@@ -204,14 +177,14 @@ deinit :: proc() {
 build :: proc(events: pl.Event_List) -> bool {
     state.curr_build_index += 1
 
-    clear(&state.draw_commands) // clear it
+    clear(&state.draw_commands) // @note: clear it
     clear(&state.curr_parent)
 
     state.events = events
 
     eat: ^pl.Event
-    // warn: even if a widget didnt get clicked I still eat the event
-    // could be a issue
+    // @warn: even if a widget didnt get clicked I still eat the event
+    // @note: could be a issue
     for e := state.events.head; e != nil; e = e.next {
         if eat != nil {
             pl.eat_event(&state.events, eat)
@@ -286,371 +259,18 @@ build_end :: proc(_: bool) {
     state.prev_frame_mouse_pos = state.mouse_pos
 }
 
-@(deferred_out = panel_end)
-panel :: proc(title: string, description := Box_Desc{}) -> bool {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
-    box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT, .CLIP}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .NONE
-    box_pos := description.pos.? or_else {-1, -1}
-
-
-    // definitive that desc is filled
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    panel := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-    append(&state.curr_parent, panel)
-    if .FLOATING_X in box_flags && .FLOATING_Y in box_flags {
-        make_floating(panel)
-    }
-    return true
-}
-
-
-panel_end :: proc(_: bool) {
-    pop(&state.curr_parent)
-}
-
-@(deferred_out = collapsable_header_end)
-collapsable_header :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
-    // parent_which_encloses_all
-    box_begin()
-
-    // title
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1, strictness = 0.5}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
-    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_TEXT, .DRAW_RECT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .CENTER
-    box_pos := description.pos.? or_else {-1, -1}
-
-    // definitive that desc is filled
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    title_box := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-
-    check_action(title_box)
-
-    if title_box.clicked {
-        value^ = !value^
-    }
-
-    if value^ == true {
-        // content
-        box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
-    }
-
-    return value^
-}
-
-@(deferred_out = dropdown_end)
-dropdown :: proc(title: string, value: ^bool, description := Box_Desc{}) -> bool {
-    // title
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1} // hmm
-    box_flags := description.flags.? or_else {.HOVERABLE, .PRESSABLE, .DRAW_TEXT, .DRAW_RECT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .CENTER
-    box_pos: [2]f32 = description.pos.? or_else {-1, -1}
-
-    // definitive that desc is filled
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    title_box := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-
-    append(&state.curr_parent, title_box)
-
-    check_action(title_box)
-    if title_box.clicked {
-        value^ = !value^
-    }
-
-    if value^ == true {
-        // content_window
-        box_title := fmt.aprintf("dropdown__%s", title, allocator = state.allocator)
-        context_menu(box_title, {title_box.pos.x, title_box.pos.y + title_box.dimensions.y + OFFSET_Y})
-    }
-
-    return value^
-}
-
-context_menu :: proc(title: string, pref_pos: [2]f32) {
-    box_h_size := Size {
-        type       = .BASED_ON_CHILDREN_SUM,
-        strictness = 0,
-    }
-    box_v_size := Size {
-        type       = .BASED_ON_CHILDREN_SUM,
-        strictness = 0,
-    }
-    box_flags := Widget_Flags{.DRAW_RECT, .FLOATING_X, .FLOATING_Y}
-    box_children_layout_axis: Axis_Type = .VERTICAL
-    box_color := state.def_color
-    box_pos: [2]f32 = pref_pos
-
-    if state.debug do box_flags += {.DRAW_BORDER}
-
-
-    box := create_box(title, box_h_size, box_v_size, box_pos, box_flags, .NONE, box_children_layout_axis, box_color)
-    make_floating(box)
-    append(&state.curr_parent, box)
-}
-
-
-button :: proc(label: string, description := Box_Desc{}) -> bool {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_flags := description.flags.? or_else {.PRESSABLE, .HOVERABLE, .DRAW_TEXT, .DRAW_RECT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .CENTER
-    box_pos: [2]f32 = description.pos.? or_else {-1, -1}
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    button := create_box(
-        label,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-    check_action(button)
-
-    return button.clicked
-}
-
-slider :: proc(title: string, value: ^f32, min: f32, max: f32) {
-    assert(value != nil)
-    assert(min != max)
-    assert(min < max)
-    text_size := r.calculate_text_size(title, state.font_size)
-
-    box_h_size := Size {
-        type       = .FIXED,
-        value      = text_size.x + 2 * Sliderbox_Padding + 2 * OFFSET_X,
-        strictness = 1,
-    }
-    box_v_size := Size {
-        type       = .FIXED,
-        value      = text_size.y + 2 * OFFSET_Y,
-        strictness = 1,
-    }
-    box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
-    box_children_layout_axis: Axis_Type = .VERTICAL
-    box_color := state.def_color
-    text_align: Text_Align_Flag = .CENTER
-    box_pos: [2]f32 = {-1, -1}
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    slider := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-
-    if slider.custom_data == nil {
-        slider_box_data := new(Slider_Box_Data, state.allocator)
-        slider.custom_data = slider_box_data
-        slider.custom_draw = slider_custom_draw
-    }
-
-    (cast(^Slider_Box_Data)slider.custom_data)^ = {
-        value = value,
-        min   = min,
-        max   = max,
-    }
-    check_action(slider)
-    if slider.key == state.active_widget_key {
-        total_range := max - min
-        value_change := (f32(state.mouse_dx.x) / box_h_size.value) * total_range
-        value^ = clamp(value_change + value^, min, max)
-    }
-}
-
-checkbox :: proc(title: string, value: ^bool) {
-    assert(value != nil)
-    checkbox := toggle_box(title)
-
-    if checkbox.custom_data == nil {
-        check_box_data := new(Check_Box_Data, state.allocator)
-        checkbox.custom_data = check_box_data
-        checkbox.custom_draw = checkbox_custom_draw
-    }
-    (cast(^Check_Box_Data)checkbox.custom_data).value = value
-
-    check_action(checkbox)
-
-    if checkbox.clicked {
-        value^ = !value^
-    }
-}
-
-radio :: proc(title: string, ind: ^u32, identifier: u32) {
-    assert(ind != nil)
-    radio := toggle_box(title)
-
-    if radio.custom_data == nil {
-        radio_box_data := new(Radio_Box_Data, state.allocator)
-        radio.custom_data = radio_box_data
-    }
-    (cast(^Radio_Box_Data)radio.custom_data)^ = {
-        value      = ind,
-        identifier = identifier,
-    }
-
-    radio.custom_draw = radio_custom_draw
-
-    check_action(radio)
-    if radio.clicked {
-        data: ^Radio_Box_Data = cast(^Radio_Box_Data)radio.custom_data
-        data.value^ = identifier
-    }
-}
-
-label :: proc(title: string, description := Box_Desc{}) {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_TEXT, strictness = 1}
-    box_flags := description.flags.? or_else {.DRAW_TEXT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    text_align := description.text_algin_flag.? or_else .CENTER
-    box_pos: [2]f32 = description.pos.? or_else {-1, -1}
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-    // title
-    create_box(title, box_h_size, box_v_size, box_pos, box_flags, text_align, box_children_layout_axis, box_color)
-}
-
 build_draw_commands :: proc() -> []Draw_Command {
     root := state.root
-    calc_size_independent(root)         // hmmm
-    calc_size_upwards_dependent(root)   // hmmm
-    calc_size_downwards_dependent(root) // hmmm
+    calc_size_independent(root)         // @note: hmmm
+    calc_size_upwards_dependent(root)   // @note: hmmm
+    calc_size_downwards_dependent(root) // @note: hmmm
     calc_final_sizes(root)
 
-    // important so that we only work on the first child index
+    // @note: important so that we only work on the first child index
     calc_positions(root.first)
-    // welp
+    // @note: welp
     pre_order_traversal(root, {root.pos, root.dimensions})
     return state.draw_commands[:]
-}
-
-@(deferred_out = box_end)
-spacer :: proc() -> bool {
-    box_begin(
-        description = Box_Desc {
-            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
-            v_size = {type = .FIXED, value = 50},
-            flags = {.CLIP},
-        },
-    )
-    return true
-}
-
-@(private)
-collapsable_header_end :: proc(open: bool) {
-    if open {
-        box_end(open)
-    }
-    box_end(open)
-}
-@(private)
-dropdown_end :: proc(open: bool) {
-    if open {
-        box_end(open)
-    }
-    box_end(open)
-}
-
-row :: proc {
-    transient_row,
-    named_row,
-}
-
-
-@(deferred_out = box_end)
-transient_row :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
-}
-@(deferred_out = box_end)
-named_row :: proc(title: string, description: Box_Desc) -> bool {
-    des := description
-    des.children_layout_axis = .HORIZONTAL
-    return box_begin(title, des)
-}
-
-column :: proc {
-    transient_column,
-    named_column,
-}
-
-@(deferred_out = box_end)
-transient_column :: proc() -> bool {
-    return box_begin(description = Box_Desc{children_layout_axis = .VERTICAL})
-}
-@(deferred_out = box_end)
-named_column :: proc(title: string, description: Box_Desc) -> bool {
-    des := description
-    des.children_layout_axis = .VERTICAL
-    return box_begin(title, des)
-}
-
-@(deferred_out = box_end)
-box :: proc(description := Box_Desc{}) -> bool {
-    return box_begin(description = description)
-}
-box_end :: proc(_: bool) {
-    pop(&state.curr_parent)
 }
 
 @(private)
@@ -662,50 +282,10 @@ make_floating :: proc(box: ^Box) {
 }
 
 @(private)
-toggle_box :: proc(title: string) -> ^Box {
-    text_size := r.calculate_text_size(title, state.font_size)
-    box_h_size := Size {
-        type       = .FIXED,
-        value      = text_size.x + Checkbox_Padding + Checkbox_Square + 2 * OFFSET_X,
-        strictness = 1,
-    }
-    box_v_size := Size {
-        type       = .FIXED,
-        value      = max(text_size.y, Checkbox_Square) + 2 * OFFSET_Y,
-        strictness = 1,
-    }
-    box_flags := Widget_Flags{.DRAW_CUSTOM, .PRESSABLE}
-    box_children_layout_axis: Axis_Type = .VERTICAL
-    box_color := state.def_color
-    text_align: Text_Align_Flag = .CENTER
-    box_pos: [2]f32 = {-1, -1}
-
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    toggle_box := create_box(
-        title,
-        box_h_size,
-        box_v_size,
-        box_pos,
-        box_flags,
-        text_align,
-        box_children_layout_axis,
-        box_color,
-    )
-
-    return toggle_box
-}
-@(private)
-normalize_f32 :: proc(value, min, max: f32) -> f32 {
-    return (value - min) / (max - min)
-}
-
-@(private)
 text_align :: proc(elem: ^Box) -> [2]f32 {
     // @perf: cache the text_size
     text_size := r.calculate_text_size(elem.title, state.font_size)
-    // hmmm
+    // @note: hmmm
     pos: [2]f32 = {}
     switch (elem.text_align_flag) {
         case .LEFT:
@@ -720,116 +300,6 @@ text_align :: proc(elem: ^Box) -> [2]f32 {
     }
 
     return pos
-}
-
-@(private)
-collapsable_custom_draw :: proc(elem: ^Box, value: rawptr) {
-    data := cast(^Collapsable_Box_Data)value
-    if data.value^ == true {
-    }
-    r_color := [3]f32{1, 0, 0}
-    if elem.hovered {
-        r_color = {1, 1, 0}
-    }
-    text_size := r.calculate_text_size(elem.title, state.font_size)
-    append(
-        &state.draw_commands,
-        {rect = {elem.pos, {elem.dimensions.x, text_size.y + 2 * OFFSET_Y}}, color = r_color, type = .RECTANGLE},
-    )
-    t_pos := text_align(elem)
-    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-}
-
-@(private)
-slider_custom_draw :: proc(elem: ^Box, value: rawptr) {
-    data := cast(^Slider_Box_Data)value
-
-    append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
-    normalized_val := normalize_f32(data.value^, data.min, data.max)
-    append(
-        &state.draw_commands,
-        {
-            rect = {elem.pos, {elem.dimensions.x * normalized_val, elem.dimensions.y}},
-            color = {1, 0, 0},
-            type = .RECTANGLE,
-        },
-    )
-
-    // find the center first
-    title := fmt.aprintf("%s %.2f", elem.title, data.value^, allocator = state.frame_allocator)
-    // should I do this ? I think this will kind of fuck it up
-    temp := elem.title
-    elem.title = title
-    t_pos := text_align(elem)
-    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-    elem.title = temp
-}
-
-@(private)
-radio_custom_draw :: proc(elem: ^Box, value: rawptr) {
-    data := cast(^Radio_Box_Data)value
-
-    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
-    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
-    append(&state.draw_commands, {rect = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
-    append(&state.draw_commands, {rect = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
-
-    // if the clicked value's id matches the identifier
-    if data.value^ == data.identifier {
-        s_r_pos := pos.xy + 1
-        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
-        append(&state.draw_commands, {rect = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
-    }
-
-    t_pos := text_align(elem)
-    t_pos.x += Checkbox_Padding
-    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-}
-
-@(private)
-checkbox_custom_draw :: proc(elem: ^Box, value: rawptr) {
-    data := cast(^Check_Box_Data)value
-    //border
-    // append(&state.draw_commands, {rect = {elem.pos - 1, elem.dimensions + 2}, color = {1, 0, 0}, type = .RECTANGLE})
-    // append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = state.def_color, type = .RECTANGLE})
-    // checkbox_square pos
-    pos := [2]f32{elem.pos.x + OFFSET_X, elem.pos.y + OFFSET_Y}
-    dimensions := [2]f32{Checkbox_Square, Checkbox_Square}
-    append(&state.draw_commands, {rect = {pos, dimensions}, color = {1, 1, 1}, type = .RECTANGLE})
-    append(&state.draw_commands, {rect = {pos.xy + 1, dimensions.xy - 2}, color = state.def_color, type = .RECTANGLE})
-
-    // if its clicked then
-    if data.value^ == true {
-        s_r_pos := pos.xy + 1
-        s_r_dimensions := [2]f32{Checkbox_Square - 2, Checkbox_Square - 2}
-        append(&state.draw_commands, {rect = {s_r_pos, s_r_dimensions}, color = {1, 0, 0}, type = .RECTANGLE})
-    }
-
-    t_pos := text_align(elem)
-    t_pos.x += Checkbox_Padding
-    append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
-}
-
-@(private)
-box_begin :: proc(title: string = {}, description := Box_Desc{}) -> bool {
-
-    box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
-    box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 0}
-    box_flags := description.flags.? or_else {.DRAW_RECT}
-    box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
-    box_color := description.color.? or_else state.def_color
-    box_pos := description.pos.? or_else {-1, -1}
-
-    if state.debug do box_flags += {.DRAW_BORDER}
-
-    // definitive that desc is filled
-    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-    box := create_box(title, box_h_size, box_v_size, box_pos, box_flags, .NONE, box_children_layout_axis, box_color)
-
-    append(&state.curr_parent, box)
-    return true
 }
 
 @(private)
@@ -849,7 +319,7 @@ box_clip :: proc(box: ^Box) -> [2]f32 {
 
     for parent := box.parent; parent != nil; parent = parent.parent {
         if .CLIP in parent.flags {
-            // can never be placed on the left of the parent
+            // @note: can never be placed on the left of the parent
             if box.pos.x < parent.pos.x + parent.dimensions.x &&
                parent.pos.x + parent.dimensions.x < box.pos.x + dimen.x {
                 dimen.x = max(0, dimen.x - (box.pos.x + dimen.x - parent.pos.x - parent.dimensions.x))
@@ -869,9 +339,9 @@ box_clip :: proc(box: ^Box) -> [2]f32 {
 
 @(private)
 check_action :: proc(elem: ^Box) {
-    // hot
-    if state.active_widget_key == 0 && state.hot_widget_key == 0 {     // if there is an interaction going on or a key is already being hovered , skip the following code
-        // clip
+    // @note: hot
+    if state.active_widget_key == 0 && state.hot_widget_key == 0 {     // @note: if there is an interaction going on or a key is already being hovered , skip the following code
+        // @note: clip
         clip_rect := box_clip(elem)
         if mouse_collision(state.mouse_pos, {elem.pos, clip_rect}) {
             state.hot_widget_key = elem.key
@@ -882,13 +352,13 @@ check_action :: proc(elem: ^Box) {
                 pl.set_cursor_icon(.DRAGGING)
             }
         }
-        // active and hot
+        // @note: active and hot
         if state.hot_widget_key == elem.key && state.mouse_btn_press == .BTN_LEFT {
             state.active_widget_key = elem.key
             elem.clicked = true
         }
     }
-    // active
+    // @note: active
     if state.active_widget_key == elem.key {
         if .PRESSABLE in elem.flags {
             pl.set_cursor_icon(.POINTER)
@@ -897,7 +367,7 @@ check_action :: proc(elem: ^Box) {
         }
     }
 
-    // none
+    // @note: none
     if state.mouse_btn_held == .NONE {
         state.active_widget_key = 0
     }
@@ -953,14 +423,14 @@ create_box :: proc(
     color: [3]f32,
 ) -> ^Box {
 
-    key: u64 = 0 // useful for transient boxes that have no state to store between frames
+    key: u64 = 0 // @note: useful for transient boxes that have no state to store between frames
     imm_parent: ^Box = nil
     key_parent: ^Box = nil
 
     if len(state.curr_parent) > 0 {
         imm_parent = slice.last(state.curr_parent[:])
         key_parent = imm_parent
-        // parent might have key == 0
+        // @note: parent might have key == 0
         for key_parent != nil && key_parent.key == 0 {
             key_parent = key_parent.parent
         }
@@ -983,7 +453,7 @@ create_box :: proc(
     node, found := state.tree[key]
     if !found {
         if key == 0 {
-            node = new(Box, state.frame_allocator) // for transient boxes
+            node = new(Box, state.frame_allocator) // @note: for transient boxes
         } else {
             node = new(Box, state.allocator)
         }
@@ -1003,7 +473,7 @@ create_box :: proc(
     node.key = key
     node.child_count = 0
 
-    // invalidate the list
+    // @note: invalidate the list
     node.prev, node.next, node.first, node.last = nil, nil, nil, nil
     node.parent = imm_parent
     node.clicked = false
@@ -1011,7 +481,7 @@ create_box :: proc(
     node.color = color
     node.build_index = state.curr_build_index
 
-    // damn this kinda doesnt work if we were to move the floating window but oh well
+    // @fix: damn this kinda doesnt work if we were to move the floating window but oh well
     if .FLOATING_X in flags {
         node.pos.x = pref_pos.x
     }
@@ -1019,10 +489,10 @@ create_box :: proc(
         node.pos.y = pref_pos.y
     }
 
-    // damn the parent changed
+    // @note: damn the parent changed
     if imm_parent != nil do insert_ll(imm_parent, node)
 
-    //insert/update the hashmap
+    // @note: insert/update the hashmap
     if key != 0 {
         state.tree[key] = node
     }
@@ -1038,14 +508,14 @@ calc_size_independent :: proc(node: ^Box) {
         text_size := r.calculate_text_size(elem.title, state.font_size)
         #partial switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
-                elem.dimensions.x = text_size[0] + 5 // 2.5 units in each dir
+                elem.dimensions.x = text_size[0] + 5 // @note: 2.5 units in each dir
             case .FIXED:
                 elem.dimensions.x = elem.h_size.value
             case .NONE:
         }
         #partial switch (elem.v_size.type) {
             case .BASED_ON_TEXT:
-                elem.dimensions.y = text_size[1] + 5 // 2.5 units in each dir
+                elem.dimensions.y = text_size[1] + 5 // @note: 2.5 units in each dir
             case .FIXED:
                 elem.dimensions.y = elem.v_size.value
             case .NONE:
@@ -1058,10 +528,10 @@ calc_size_upwards_dependent :: proc(node: ^Box) {
     if node == nil do return
 
     for elem := node; elem != nil; elem = elem.next {
-        // lol
+        // @note: lol
         if (elem.h_size.type == .BASED_ON_PARENT_PCT) {
-            // could be that the dimenions are still 0 because no parent with type fixed was found
-            // well root is always fixed so
+            // @note: could be that the dimenions are still 0 because no parent with type fixed was found
+            // @note: well root is always fixed so
             for parent := elem.parent; parent != nil; parent = parent.parent {
                 if parent.h_size.type == .BASED_ON_CHILDREN_SUM || parent.h_size.type == .NONE {
                     continue
@@ -1071,8 +541,8 @@ calc_size_upwards_dependent :: proc(node: ^Box) {
             }
         }
         if (elem.v_size.type == .BASED_ON_PARENT_PCT) {
-            // could be tvat the dimenions are still 0 because no parent with type fixed was found
-            // well root is always fixed so
+            // @note: could be tvat the dimenions are still 0 because no parent with type fixed was found
+            // @note: well root is always fixed so
             for parent := elem.parent; parent != nil; parent = parent.parent {
                 if parent.v_size.type == .BASED_ON_CHILDREN_SUM || parent.v_size.type == .NONE {
                     continue
@@ -1101,7 +571,7 @@ calc_size_downwards_dependent :: proc(node: ^Box) {
                         }
                     }
                 case .HORIZONTAL:
-                    elem.dimensions.x = OFFSET_X // add the initial offset size
+                    elem.dimensions.x = OFFSET_X // @note: add the initial offset size
                     for child := elem.first; child != nil; child = child.next {
                         if .FLOATING_X not_in child.flags {
                             elem.dimensions.x += child.dimensions.x + OFFSET_X
@@ -1129,8 +599,8 @@ calc_size_downwards_dependent :: proc(node: ^Box) {
         }
     }
 }
-// this is the pass that will check whether to shrink it or not
-// weighted allocation of the overflow
+// @note: this is the pass that will check whether to shrink it or not
+// @note: weighted allocation of the overflow
 calc_final_sizes :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
@@ -1208,11 +678,11 @@ calc_positions :: proc(node: ^Box) {
         switch (parent.children_layout_axis) {
             case .VERTICAL:
                 if .FLOATING_Y not_in elem.flags {
-                    pen_pos.y += elem.dimensions.y // hmm
+                    pen_pos.y += elem.dimensions.y // @note: hmm
                 }
             case .HORIZONTAL:
                 if .FLOATING_X not_in elem.flags {
-                    pen_pos.x += elem.dimensions.x // hmm
+                    pen_pos.x += elem.dimensions.x // @note: hmm
                 }
             case:
                 assert(false, "Children layout not specified.")

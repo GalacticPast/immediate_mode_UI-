@@ -1,9 +1,9 @@
 package wayland
 
-// Optional protocols from wayland-protocols, translated by hand like xdg_shell_linux.odin:
-//   viewporter        (stable)  lets a buffer of any size be shown at the window's logical size
-//   fractional-scale  (staging) tells us the exact scale of the output, e.g. 1.5
-//   cursor-shape      (staging) lets the compositor draw standard cursors, no cursor images needed
+// @note: Optional protocols from wayland-protocols, translated by hand like xdg_shell_linux.odin:
+//   @note: viewporter        (stable)  lets a buffer of any size be shown at the window's logical size
+//   @note: fractional-scale  (staging) tells us the exact scale of the output, e.g. 1.5
+//   @note: cursor-shape      (staging) lets the compositor draw standard cursors, no cursor images needed
 
 wp_viewporter :: struct {}
 wp_viewport :: struct {}
@@ -13,11 +13,11 @@ wp_cursor_shape_manager_v1 :: struct {}
 wp_cursor_shape_device_v1 :: struct {}
 
 wp_fractional_scale_v1_listener :: struct {
-    // The scale numerator over a denominator of 120, so 1.5 arrives as 180.
+    // @note: The scale numerator over a denominator of 120, so 1.5 arrives as 180.
     preferred_scale: proc "c" (data: rawptr, fractional_scale: ^wp_fractional_scale_v1, scale: u32),
 }
 
-// --- interface tables ------------------------------------------------------
+// @note: --- interface tables ------------------------------------------------------
 
 @(private = "file")
 get_viewport_types := [2]^interface{&wp_viewport_interface, nil}
@@ -26,8 +26,8 @@ get_fractional_scale_types := [2]^interface{&wp_fractional_scale_v1_interface, n
 @(private = "file")
 get_cursor_pointer_types := [2]^interface{&wp_cursor_shape_device_v1_interface, nil}
 
-// surface_interface and pointer_interface live inside libwayland; their addresses are only
-// known once the program is loaded.
+// @note: surface_interface and pointer_interface live inside libwayland; their addresses are only
+// @note: known once the program is loaded.
 @(init, private = "file")
 init_protocol_types :: proc "contextless" () {
     get_viewport_types[1] = &surface_interface
@@ -100,7 +100,7 @@ wp_cursor_shape_device_v1_interface := interface {
     methods      = raw_data(wp_cursor_shape_device_v1_requests[:]),
 }
 
-// --- requests --------------------------------------------------------------
+// @note: --- requests --------------------------------------------------------------
 
 wp_viewporter_destroy :: proc "contextless" (viewporter: ^wp_viewporter) {
     proxy_marshal_flags((^proxy)(viewporter), 0, nil, version_of(viewporter), MARSHAL_FLAG_DESTROY)
@@ -125,7 +125,7 @@ wp_viewport_destroy :: proc "contextless" (viewport: ^wp_viewport) {
     proxy_marshal_flags((^proxy)(viewport), 0, nil, version_of(viewport), MARSHAL_FLAG_DESTROY)
 }
 
-// Double-buffered: applies on the next commit.
+// @note: Double-buffered: applies on the next commit.
 wp_viewport_set_destination :: proc "contextless" (viewport: ^wp_viewport, width, height: i32) {
     WP_VIEWPORT_SET_DESTINATION :: 2
     proxy_marshal_flags((^proxy)(viewport), WP_VIEWPORT_SET_DESTINATION, nil, version_of(viewport), 0, width, height)
@@ -183,7 +183,7 @@ wp_cursor_shape_device_v1_destroy :: proc "contextless" (device: ^wp_cursor_shap
     proxy_marshal_flags((^proxy)(device), 0, nil, version_of(device), MARSHAL_FLAG_DESTROY)
 }
 
-// `serial` must be the one from the latest pointer.enter.
+// @note: `serial` must be the one from the latest pointer.enter.
 wp_cursor_shape_device_v1_set_shape :: proc "contextless" (
     device: ^wp_cursor_shape_device_v1,
     serial: u32,

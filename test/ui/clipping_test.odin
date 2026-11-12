@@ -3,7 +3,7 @@ package ui
 import "core:sync"
 import "core:testing"
 
-// Tests that use the UI's global state must not run at the same time.
+// @warn: Tests that use the UI's global state must not run at the same time.
 clipping_test_mutex: sync.Mutex
 
 @(test)
