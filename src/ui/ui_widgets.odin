@@ -82,13 +82,19 @@ panel_end :: proc(_: bool) {
 @(deferred_out = scroll_region_end)
 scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     //@note parent which encloses all
-    box_begin(description = Box_Desc{h_size = {type = .FIXED, value = 400}, v_size = {type = .FIXED, value = 400}})
+    box_begin(
+        description = Box_Desc {
+            h_size = {type = .FIXED, value = 800},
+            v_size = {type = .FIXED, value = 800},
+            flags = {.CLIP},
+        },
+    )
 
     // @note: scroll region
     x_value: f32 = 1.0
     y_value: f32 = 1.0
     scroll_region: ^Box = nil
-    box_flags := description.flags.? or_else {.DRAW_RECT, .CLIP, .SCROLLABLE_Y}
+    box_flags := description.flags.? or_else {.DRAW_RECT, .CLIP, .SCROLLABLE_X}
 
     {
         // @todo: choose better defaults
@@ -140,7 +146,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
             }
             slider_box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
             box_children_layout_axis: Axis_Type = .VERTICAL
-            box_color: [3]f32 = state.def_color
+            box_color: [3]f32 = {1, 1, 0}
             text_align: Text_Align_Flag = .CENTER
             box_pos: [2]f32 = {-1, -1}
 
@@ -179,7 +185,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         if .SCROLLABLE_Y in box_flags {
             box_h_size: Size = {
                 type       = .BASED_ON_PARENT_PCT,
-                value      = 1.0 - x_value,
+                value      = 0.05,
                 strictness = 0.5,
             }
             box_v_size: Size = {
@@ -189,7 +195,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
             }
             slider_box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
             box_children_layout_axis: Axis_Type = .VERTICAL
-            box_color: [3]f32 = state.def_color
+            box_color: [3]f32 = {1, 0, 1}
             text_align: Text_Align_Flag = .CENTER
             box_pos: [2]f32 = {-1, -1}
 
@@ -226,13 +232,12 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
             }
         }
     }
-
     append(&state.curr_parent, scroll_region)
     return true
 }
 scroll_region_end :: proc(_: bool) {
     pop(&state.curr_parent) // the scroll region
-    pop(&state.curr_parent) // the encompassing parent
+    box_end(true)           // the encompassing parent
 }
 
 @(deferred_out = collapsable_header_end)
