@@ -28,6 +28,8 @@ WIDGET_FLAG :: enum {
     CLIP,
     FLOATING_X,
     FLOATING_Y,
+    OVERFLOW_X,
+    OVERFLOW_Y,
     SCROLLABLE_X,
     SCROLLABLE_Y,
 
@@ -619,38 +621,43 @@ calc_final_sizes :: proc(node: ^Box) {
                 combined_max_height_shrinkage += child.dimensions.y * (1 - child.v_size.strictness)
             }
         }
-        if elem.children_layout_axis == .HORIZONTAL {
-            overflow_width := max(0, c_width - elem.dimensions.x)
-            if overflow_width > 0 && combined_max_width_shrinkage > 0 {
-                total_shrinkage := min(overflow_width, combined_max_width_shrinkage)
-                for child := elem.first; child != nil; child = child.next {
-                    if .FLOATING_X not_in child.flags {
-                        child_share :=
-                            (child.dimensions.x * (1 - child.h_size.strictness)) / combined_max_width_shrinkage
-                        child.dimensions.x -= total_shrinkage * child_share
+        if .OVERFLOW_X not_in elem.flags {
+            if elem.children_layout_axis == .HORIZONTAL {
+                overflow_width := max(0, c_width - elem.dimensions.x)
+                if overflow_width > 0 && combined_max_width_shrinkage > 0 {
+                    total_shrinkage := min(overflow_width, combined_max_width_shrinkage)
+                    for child := elem.first; child != nil; child = child.next {
+                        if .FLOATING_X not_in child.flags {
+                            child_share :=
+                                (child.dimensions.x * (1 - child.h_size.strictness)) / combined_max_width_shrinkage
+                            child.dimensions.x -= total_shrinkage * child_share
+                        }
                     }
                 }
-            }
-            for child := elem.first; child != nil; child = child.next {
-                if .FLOATING_Y not_in child.flags {
-                    child.dimensions.y = min(elem.dimensions.y, child.dimensions.y)
-                }
-            }
-        } else if elem.children_layout_axis == .VERTICAL {
-            overflow_height := max(0, c_height - elem.dimensions.y)
-            if overflow_height > 0 && combined_max_height_shrinkage > 0 {
-                total_shrinkage := min(overflow_height, combined_max_height_shrinkage)
                 for child := elem.first; child != nil; child = child.next {
                     if .FLOATING_Y not_in child.flags {
-                        child_share :=
-                            (child.dimensions.y * (1 - child.v_size.strictness)) / combined_max_height_shrinkage
-                        child.dimensions.y -= total_shrinkage * child_share
+                        child.dimensions.y = min(elem.dimensions.y, child.dimensions.y)
                     }
                 }
             }
-            for child := elem.first; child != nil; child = child.next {
-                if .FLOATING_X not_in child.flags {
-                    child.dimensions.x = min(elem.dimensions.x, child.dimensions.x)
+        }
+        if .OVERFLOW_Y not_in elem.flags {
+            if elem.children_layout_axis == .VERTICAL {
+                overflow_height := max(0, c_height - elem.dimensions.y)
+                if overflow_height > 0 && combined_max_height_shrinkage > 0 {
+                    total_shrinkage := min(overflow_height, combined_max_height_shrinkage)
+                    for child := elem.first; child != nil; child = child.next {
+                        if .FLOATING_Y not_in child.flags {
+                            child_share :=
+                                (child.dimensions.y * (1 - child.v_size.strictness)) / combined_max_height_shrinkage
+                            child.dimensions.y -= total_shrinkage * child_share
+                        }
+                    }
+                }
+                for child := elem.first; child != nil; child = child.next {
+                    if .FLOATING_X not_in child.flags {
+                        child.dimensions.x = min(elem.dimensions.x, child.dimensions.x)
+                    }
                 }
             }
         }

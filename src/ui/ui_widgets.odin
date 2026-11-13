@@ -46,7 +46,7 @@ panel :: proc(title: string, description := Box_Desc{}) -> bool {
 
     box_h_size := description.h_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
     box_v_size := description.v_size.? or_else {type = .BASED_ON_CHILDREN_SUM, strictness = 1}
-    box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT, .CLIP}
+    box_flags := description.flags.? or_else {.HOVERABLE, .DRAGGABLE, .DRAW_RECT, .OVERFLOW_X, .OVERFLOW_Y}
     box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
     box_color := description.color.? or_else state.def_color
     text_align := description.text_algin_flag.? or_else .NONE
@@ -84,8 +84,8 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     //@note parent which encloses all
     box_begin(
         description = Box_Desc {
-            h_size = {type = .FIXED, value = 800},
-            v_size = {type = .FIXED, value = 800},
+            h_size = {type = .FIXED, value = 100},
+            v_size = {type = .FIXED, value = 100},
             flags = {.CLIP},
         },
     )
@@ -94,7 +94,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     x_value: f32 = 1.0
     y_value: f32 = 1.0
     scroll_region: ^Box = nil
-    box_flags := description.flags.? or_else {.DRAW_RECT, .CLIP, .SCROLLABLE_X}
+    box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_X}
 
     {
         // @todo: choose better defaults
@@ -125,62 +125,26 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         )
         if scroll_region.custom_data == nil {
             data := new(Scroll_Region_Data, state.allocator)
-            data^ = Scroll_Region_Data{}
+            data^ = Scroll_Region_Data {
+                min_x = 0,
+                max_x = 1,
+                min_y = 0,
+                max_y = 1,
+            }
             scroll_region.custom_data = data
         }
     }
 
     // @note: scroll bar
     {
-        // @todo: choose better defaults
         if .SCROLLABLE_X in box_flags {
-            box_h_size: Size = {
-                type       = .BASED_ON_PARENT_PCT,
-                value      = 1.0,
-                strictness = 0.5,
-            }
-            box_v_size: Size = {
-                type       = .BASED_ON_PARENT_PCT,
-                value      = 0.05,
-                strictness = 0.5,
-            }
-            slider_box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
-            box_children_layout_axis: Axis_Type = .VERTICAL
-            box_color: [3]f32 = {1, 1, 0}
-            text_align: Text_Align_Flag = .CENTER
-            box_pos: [2]f32 = {-1, -1}
-
-            // @note: definitive that desc is filled
-            assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-            assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-            bar := create_box(
-                fmt.aprintf("%s_hori_bar", label, allocator = state.frame_allocator),
-                box_h_size,
-                box_v_size,
-                box_pos,
-                slider_box_flags,
-                text_align,
-                box_children_layout_axis,
-                box_color,
-            )
-            if bar.custom_data == nil {
-                bar_data := new(Slider_Box_Data, state.allocator)
-                bar.custom_data = bar_data
-                bar.custom_draw = slider_custom_draw
-            }
             data := cast(^Scroll_Region_Data)scroll_region.custom_data
-            (cast(^Slider_Box_Data)bar.custom_data)^ = {
-                value = &data.value_x,
-                min   = data.min_x,
-                max   = data.max_x,
-            }
-            check_action(bar)
-            if bar.key == state.active_widget_key {
-                total_range := data.max_x - data.min_x
-                value_change := (f32(state.mouse_dx.x) / box_h_size.value) * total_range
-                data.value_x = clamp(value_change + data.value_x, data.min_x, data.max_x)
-            }
+            slider(
+                fmt.aprintf("%s_hori_bar", label, allocator = state.frame_allocator),
+                &data.value_x,
+                data.min_x,
+                data.max_x,
+            )
         }
         if .SCROLLABLE_Y in box_flags {
             box_h_size: Size = {
