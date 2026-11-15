@@ -710,10 +710,7 @@ intersect_rect :: proc(a, b: Rect) -> Rect {
 pre_order_traversal :: proc(node: ^Box, inherited_clip: Rect) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
-        clip := inherited_clip
-        if .CLIP in elem.flags {
-            clip = intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
-        }
+        clip := intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
         color := elem.color
         if .DRAW_BORDER in elem.flags || state.debug == true {
             append(
