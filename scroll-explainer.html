@@ -1,0 +1,51 @@
+<div id="scroll-explainer">
+  <div class="viz-controls">
+    <label class="form-label">Content height: <span id="content-value">300</span> px<input id="content-height" class="form-range" type="range" min="60" max="500" value="300" step="10"></label>
+    <label class="form-label">Viewport height: <span id="view-value">100</span> px<input id="view-height" class="form-range" type="range" min="60" max="200" value="100" step="10"></label>
+  </div>
+  <label class="form-label">Scroll offset: <span id="offset-value">0</span> / <span id="max-value">200</span> px<input id="offset" class="form-range" type="range" min="0" max="200" value="0" step="1"></label>
+  <div class="scroll-diagram" role="img" aria-label="Viewport showing part of a moving content column alongside a proportional scrollbar">
+    <div class="scroll-column"><span>Viewport</span><div class="viewport"><div class="contents"></div></div></div>
+    <div class="scroll-column"><span>Track and thumb</span><div class="track"><div class="thumb"></div></div></div>
+  </div>
+  <div class="viz-row tabular-nums" aria-live="polite"><span id="visible-range"></span><span id="thumb-info"></span></div>
+</div>
+<style>
+#scroll-explainer {display:grid;gap:1rem}
+#scroll-explainer .viz-controls {display:flex;gap:1rem;flex-wrap:wrap}
+#scroll-explainer .form-label {display:grid;gap:.3rem;flex:1;min-width:190px}
+#scroll-explainer .scroll-diagram {display:flex;gap:2rem;align-items:start;min-height:220px}
+#scroll-explainer .scroll-column {display:grid;gap:.4rem}
+#scroll-explainer .viewport {position:relative;width:180px;overflow:hidden;outline:1px solid var(--border);background:var(--muted)}
+#scroll-explainer .contents {position:absolute;left:0;right:0;background:repeating-linear-gradient(to bottom,var(--accent) 0,var(--accent) 39px,var(--border) 39px,var(--border) 40px)}
+#scroll-explainer .contents span {display:block;height:40px;padding-left:8px;box-sizing:border-box;color:var(--accent-foreground)}
+#scroll-explainer .track {position:relative;width:18px;background:var(--muted)}
+#scroll-explainer .thumb {position:absolute;width:100%;background:var(--foreground);border-radius:8px}
+#scroll-explainer .viz-row {display:flex;gap:1rem;flex-wrap:wrap}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('scroll-explainer');
+  const get = id => root.querySelector('#' + id);
+  const content = get('content-height'), view = get('view-height'), offset = get('offset');
+  const viewport = root.querySelector('.viewport'), contents = root.querySelector('.contents');
+  const track = root.querySelector('.track'), thumb = root.querySelector('.thumb');
+  function update() {
+    const c = +content.value, v = +view.value, max = Math.max(0, c-v);
+    offset.max = max; offset.value = Math.min(+offset.value, max); offset.disabled = max === 0;
+    const o = +offset.value, thumbLen = Math.min(v, Math.max(Math.min(24,v), v * Math.min(1,v/c)));
+    const thumbPos = max ? (v-thumbLen)*o/max : 0;
+    get('content-value').textContent = c; get('view-value').textContent = v;
+    get('offset-value').textContent = o; get('max-value').textContent = max;
+    viewport.style.height = v+'px'; track.style.height = v+'px';
+    contents.style.height = c+'px'; contents.style.top = -o+'px';
+    contents.replaceChildren();
+    for (let y=0; y<c; y+=40) { const row=document.createElement('span'); row.textContent='Content y = '+y+' px'; contents.appendChild(row); }
+    thumb.style.height=thumbLen+'px'; thumb.style.top=thumbPos+'px';
+    get('visible-range').textContent='Visible content: '+o+'–'+Math.min(c,o+v)+' px';
+    get('thumb-info').textContent='Thumb: '+thumbLen.toFixed(1)+' px; position: '+thumbPos.toFixed(1)+' px';
+  }
+  for (const input of [content,view,offset]) input.addEventListener('input', update);
+  update();
+})();
+</script>

@@ -65,6 +65,9 @@ Box :: struct {
     // @note: this should persist between draws
     key:                             u64,
     build_index:                     u64, // @note: up to which version did we build it
+    view_bounds:                     [2]f32,
+    view_offset:                     [2]f32,
+
 
     // @note: per build
     // @note: first/last -> children
@@ -640,6 +643,13 @@ calc_final_sizes :: proc(node: ^Box) {
                     }
                 }
             }
+        } else {
+            for child := elem.first; child != nil; child = child.next {
+                elem.view_bounds.x = 0
+                if .FLOATING_X not_in child.flags {
+                    elem.view_bounds.x += elem.dimensions.x + OFFSET_X // @warn: check if this is correct
+                }
+            }
         }
         if .OVERFLOW_Y not_in elem.flags {
             if elem.children_layout_axis == .VERTICAL {
@@ -660,6 +670,13 @@ calc_final_sizes :: proc(node: ^Box) {
                     }
                 }
             }
+        } else {
+            for child := elem.first; child != nil; child = child.next {
+                elem.view_bounds.y = 0
+                if .FLOATING_X not_in child.flags {
+                    elem.view_bounds.y += elem.dimensions.y + OFFSET_Y // @warn: check if this is correct
+                }
+            }
         }
     }
 }
@@ -673,6 +690,13 @@ calc_positions :: proc(node: ^Box) {
 
     parent := node.parent
     pen_pos: [2]f32 = {parent.pos.x, parent.pos.y}
+
+    if .OVERFLOW_X in parent.flags {
+        pen_pos.x -= parent.view_offset.x
+    }
+    if .OVERFLOW_Y in parent.flags {
+        pen_pos.y -= parent.view_offset.y
+    }
 
     for elem := node; elem != nil; elem = elem.next {
         if .FLOATING_X not_in elem.flags {

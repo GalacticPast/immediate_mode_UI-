@@ -5,12 +5,15 @@ import "core:fmt"
 
 @(private)
 Scroll_Region_Data :: struct {
-    value_x: f32,
-    min_x:   f32,
-    max_x:   f32,
-    value_y: f32,
-    min_y:   f32,
-    max_y:   f32,
+    value: [2]f32,
+    min:   [2]f32,
+    max:   [2]f32,
+}
+Scroll_Box_Data :: struct {
+    type:  Axis_Type,
+    value: ^f32,
+    min:   f32,
+    max:   f32,
 }
 
 @(private)
@@ -83,9 +86,10 @@ panel_end :: proc(_: bool) {
 scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     //@note parent which encloses all
     box_begin(
+        fmt.aprintf("%s_parent", label, allocator = state.frame_allocator),
         description = Box_Desc {
-            h_size = {type = .FIXED, value = 100},
-            v_size = {type = .FIXED, value = 100},
+            h_size = {type = .FIXED, value = 400},
+            v_size = {type = .FIXED, value = 300},
             flags = {.CLIP},
         },
     )
@@ -94,8 +98,10 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     x_value: f32 = 1.0
     y_value: f32 = 1.0
     scroll_region: ^Box = nil
-    box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_X}
-
+    box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_X, .SCROLLABLE_Y}
+    if .SCROLLABLE_Y in box_flags {
+        box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
+    }
     {
         // @todo: choose better defaults
 
@@ -125,75 +131,40 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         )
         if scroll_region.custom_data == nil {
             data := new(Scroll_Region_Data, state.allocator)
-            data^ = Scroll_Region_Data {
-                min_x = 0,
-                max_x = 1,
-                min_y = 0,
-                max_y = 1,
+            if .SCROLLABLE_X in box_flags {
+                data^.min.x = 0
+                data^.max.x = scroll_region.view_bounds.x
+            }
+            if .SCROLLABLE_Y in box_flags {
+                data^.min.y = 0
+                data^.max.y = scroll_region.view_bounds.y
             }
             scroll_region.custom_data = data
         }
+        // @warn: this is a frame late though
+        data := cast(^Scroll_Region_Data)scroll_region.custom_data
+        if .SCROLLABLE_X in box_flags {
+            data.min.x = 0
+            data.max.x = scroll_region.view_bounds.x
+        }
+        if .SCROLLABLE_Y in box_flags {
+            data.min.y = 0
+            data.max.y = scroll_region.view_bounds.y
+        }
+        scroll_region.custom_data = data
     }
 
     // @note: scroll bar
     {
-        if .SCROLLABLE_X in box_flags {
-            data := cast(^Scroll_Region_Data)scroll_region.custom_data
-            slider(
-                fmt.aprintf("%s_hori_bar", label, allocator = state.frame_allocator),
-                &data.value_x,
-                data.min_x,
-                data.max_x,
-            )
-        }
+        data := cast(^Scroll_Region_Data)scroll_region.custom_data
         if .SCROLLABLE_Y in box_flags {
-            box_h_size: Size = {
-                type       = .BASED_ON_PARENT_PCT,
-                value      = 0.05,
-                strictness = 0.5,
-            }
-            box_v_size: Size = {
-                type       = .BASED_ON_PARENT_PCT,
-                value      = 1.0,
-                strictness = 0.5,
-            }
-            slider_box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
-            box_children_layout_axis: Axis_Type = .VERTICAL
-            box_color: [3]f32 = {1, 0, 1}
-            text_align: Text_Align_Flag = .CENTER
-            box_pos: [2]f32 = {-1, -1}
-
-            // @note: definitive that desc is filled
-            assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
-            assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
-
-            bar := create_box(
-                fmt.aprintf("%s_hori_bar", label, allocator = state.frame_allocator),
-                box_h_size,
-                box_v_size,
-                box_pos,
-                slider_box_flags,
-                text_align,
-                box_children_layout_axis,
-                box_color,
-            )
-            if bar.custom_data == nil {
-                bar_data := new(Slider_Box_Data, state.allocator)
-                bar.custom_data = bar_data
-                bar.custom_draw = slider_custom_draw
-            }
-            data := cast(^Scroll_Region_Data)scroll_region.custom_data
-            (cast(^Slider_Box_Data)bar.custom_data)^ = {
-                value = &data.value_y,
-                min   = data.min_y,
-                max   = data.max_y,
-            }
-            check_action(bar)
-            if bar.key == state.active_widget_key {
-                total_range := data.max_y - data.min_y
-                value_change := (f32(state.mouse_dx.x) / box_h_size.value) * total_range
-                data.value_y = clamp(value_change + data.value_y, data.min_y, data.max_y)
-            }
+            scroll_bar(scroll_region, .VERTICAL)
+            pop(&state.curr_parent) // damn
+            scroll_region.view_offset.y = data.value.y
+        }
+        if .SCROLLABLE_X in box_flags {
+            scroll_bar(scroll_region, .HORIZONTAL)
+            scroll_region.view_offset.x = data.value.x
         }
     }
     append(&state.curr_parent, scroll_region)
@@ -575,6 +546,95 @@ collapsable_custom_draw :: proc(elem: ^Box, value: rawptr) {
     )
     t_pos := text_align(elem)
     append(&state.draw_commands, {rect = {t_pos, {}}, type = .TEXT, color = {1, 1, 1}, title = elem.title})
+}
+
+@(private)
+scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
+    box_h_size := Size {
+        type  = .BASED_ON_PARENT_PCT if type == .HORIZONTAL else .FIXED,
+        value = 1 if type == .HORIZONTAL else 10,
+    }
+    box_v_size := Size {
+        type  = .BASED_ON_TEXT if type == .HORIZONTAL else .BASED_ON_PARENT_PCT,
+        value = 1 if type == .VERTICAL else 5,
+    }
+    scroll_box_flags := Widget_Flags{.DRAW_CUSTOM, .DRAGGABLE, .HOVERABLE}
+    box_children_layout_axis: Axis_Type = .VERTICAL
+    box_color := state.def_color
+    text_align: Text_Align_Flag = .CENTER
+    box_pos: [2]f32 = {-1, -1}
+
+    assert(box_h_size.type != .BASED_ON_PARENT_PCT || (box_h_size.value >= 0 && box_h_size.value <= 1))
+    assert(box_v_size.type != .BASED_ON_PARENT_PCT || (box_v_size.value >= 0 && box_v_size.value <= 1))
+
+    scroll_box := create_box(
+        fmt.aprintf("%s_hori_bar" if type == .HORIZONTAL else "%s_veri_bar", label, allocator = state.frame_allocator),
+        box_h_size,
+        box_v_size,
+        box_pos,
+        scroll_box_flags,
+        text_align,
+        box_children_layout_axis,
+        box_color,
+    )
+
+    if scroll_box.custom_data == nil {
+        scroll_box_data := new(Scroll_Box_Data, state.allocator)
+        scroll_box.custom_data = scroll_box_data
+        scroll_box.custom_draw = scroll_custom_draw
+    }
+
+    scroll_data := cast(^Scroll_Region_Data)scroll_region.custom_data
+    (cast(^Scroll_Box_Data)scroll_box.custom_data)^ = {
+        type  = type,
+        value = &scroll_data.value.x if type == .HORIZONTAL else &scroll_data.value.y,
+        min   = scroll_data.min.x if type == .HORIZONTAL else scroll_data.min.y,
+        max   = scroll_data.max.x if type == .HORIZONTAL else scroll_data.max.y,
+    }
+
+    data := cast(^Scroll_Box_Data)scroll_box.custom_data
+    check_action(scroll_box)
+    if scroll_box.key == state.active_widget_key {
+        if type == .HORIZONTAL {
+            total_range := data.max - data.min
+            value_change := (f32(state.mouse_dx.x) / scroll_box.dimensions.x) * total_range
+            data.value^ = clamp(value_change + data.value^, data.min, data.max)
+        } else {
+            total_range := data.max - data.min
+            value_change := (f32(state.mouse_dx.y) / scroll_box.dimensions.y) * total_range
+            data.value^ = clamp(value_change + data.value^, data.min, data.max)
+        }
+    }
+}
+
+@(private)
+scroll_custom_draw :: proc(elem: ^Box, value: rawptr) {
+    data := cast(^Scroll_Box_Data)value
+
+    append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
+    normalized_val := normalize_f32(data.value^, data.min, data.max)
+    // @warn: only for axis horizontal
+    // this also needs to know which axis it is for
+    if data.type == .HORIZONTAL {
+        append(
+            &state.draw_commands,
+            {
+                rect = {{elem.pos.x + (elem.dimensions.x * normalized_val), elem.pos.y}, {10, elem.dimensions.y}},
+                color = {1, 0, 0},
+                type = .RECTANGLE,
+            },
+        )
+    } else {
+        append(
+            &state.draw_commands,
+            {
+                rect = {{elem.pos.x, elem.pos.y + (elem.dimensions.y * normalized_val)}, {elem.dimensions.x, 10}},
+                color = {1, 0, 0},
+                type = .RECTANGLE,
+            },
+        )
+
+    }
 }
 
 @(private)

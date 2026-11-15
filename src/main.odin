@@ -182,111 +182,110 @@ main :: proc() {
                 clipping_checks(&clipping_action)
             } else if ui.panel("panel", description) {
                 if ui.scroll_region("view") {
-
-                }
-                ui.label("INPUT: click overlapping menu items; status should name the item")
-                ui.label("Menu built before underlying button")
-                overlap_check(true, &first_menu_open, &last_action)
-                ui.label("Underlying button built before menu")
-                overlap_check(false, &second_menu_open, &last_action)
-                ui.label(last_action)
-                ui.label("Hover, hold, right-click, drag in; Space sends press and release together")
-                if ui.button("Reset click status") {
-                    last_action = "No button clicked"
-                }
-
-                ui.label("LAYOUT: colored boxes should stack without overlap")
-                if ui.row() {
-                    if ui.panel(
-                        "Horizontal sample",
-                        ui.Box_Desc{children_layout_axis = .HORIZONTAL, color = {0.1, 0.1, 0.1}},
-                    ) {
-                        if ui.box(
-                            ui.Box_Desc {
-                                h_size = {type = .FIXED, value = 40},
-                                v_size = {type = .FIXED, value = 20},
-                                color = {0.8, 0.3, 0.2},
-                            },
-                        ) {  }
-                        if ui.box(
-                            ui.Box_Desc {
-                                h_size = {type = .FIXED, value = 25},
-                                v_size = {type = .FIXED, value = 15},
-                                color = {0.2, 0.5, 0.8},
-                            },
-                        ) {  }
+                    ui.label("INPUT: click overlapping menu items; status should name the item")
+                    ui.label("Menu built before underlying button")
+                    overlap_check(true, &first_menu_open, &last_action)
+                    ui.label("Underlying button built before menu")
+                    overlap_check(false, &second_menu_open, &last_action)
+                    ui.label(last_action)
+                    ui.label("Hover, hold, right-click, drag in; Space sends press and release together")
+                    if ui.button("Reset click status") {
+                        last_action = "No button clicked"
                     }
-                    if ui.panel("Vertical sample", ui.Box_Desc{color = {0.1, 0.1, 0.1}}) {
-                        if ui.box(
-                            ui.Box_Desc {
-                                h_size = {type = .FIXED, value = 40},
-                                v_size = {type = .FIXED, value = 20},
-                                color = {0.8, 0.3, 0.2},
-                            },
-                        ) {  }
-                        if ui.box(
-                            ui.Box_Desc {
-                                h_size = {type = .FIXED, value = 25},
-                                v_size = {type = .FIXED, value = 15},
-                                color = {0.2, 0.5, 0.8},
-                            },
-                        ) {  }
-                    }
-                }
-                ui.label("PERCENT: blue box is 100 x 30 inside a 200 x 120 panel")
-                if ui.panel(
-                    "Percentage sample",
-                    ui.Box_Desc {
-                        h_size = {type = .FIXED, value = 200},
-                        v_size = {type = .FIXED, value = 120},
-                        color = {0.1, 0.1, 0.1},
-                    },
-                ) {
-                    if ui.box(ui.Box_Desc{flags = {}}) {
-                        if ui.box(
-                            ui.Box_Desc {
-                                h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                                v_size = {type = .BASED_ON_PARENT_PCT, value = 0.25},
-                                color = {0.2, 0.5, 0.8},
-                            },
-                        ) {  }
-                    }
-                }
 
-                ui.label("WIDGETS")
-                if ui.collapsable_header("header", &header) {
-                    if ui.panel("large container") {
-                        if ui.box(
-                            {
-                                h_size = {type = .FIXED, value = 80},
-                                v_size = {type = .FIXED, value = 50},
-                                color = {0.8, 0.4, 0.2},
-                            },
+                    ui.label("LAYOUT: colored boxes should stack without overlap")
+                    if ui.row() {
+                        if ui.panel(
+                            "Horizontal sample",
+                            ui.Box_Desc{children_layout_axis = .HORIZONTAL, color = {0.1, 0.1, 0.1}},
                         ) {
-                            if ui.button("button") {
+                            if ui.box(
+                                ui.Box_Desc {
+                                    h_size = {type = .FIXED, value = 40},
+                                    v_size = {type = .FIXED, value = 20},
+                                    color = {0.8, 0.3, 0.2},
+                                },
+                            ) {  }
+                            if ui.box(
+                                ui.Box_Desc {
+                                    h_size = {type = .FIXED, value = 25},
+                                    v_size = {type = .FIXED, value = 15},
+                                    color = {0.2, 0.5, 0.8},
+                                },
+                            ) {  }
+                        }
+                        if ui.panel("Vertical sample", ui.Box_Desc{color = {0.1, 0.1, 0.1}}) {
+                            if ui.box(
+                                ui.Box_Desc {
+                                    h_size = {type = .FIXED, value = 40},
+                                    v_size = {type = .FIXED, value = 20},
+                                    color = {0.8, 0.3, 0.2},
+                                },
+                            ) {  }
+                            if ui.box(
+                                ui.Box_Desc {
+                                    h_size = {type = .FIXED, value = 25},
+                                    v_size = {type = .FIXED, value = 15},
+                                    color = {0.2, 0.5, 0.8},
+                                },
+                            ) {  }
+                        }
+                    }
+                    ui.label("PERCENT: blue box is 100 x 30 inside a 200 x 120 panel")
+                    if ui.panel(
+                        "Percentage sample",
+                        ui.Box_Desc {
+                            h_size = {type = .FIXED, value = 200},
+                            v_size = {type = .FIXED, value = 120},
+                            color = {0.1, 0.1, 0.1},
+                        },
+                    ) {
+                        if ui.box(ui.Box_Desc{flags = {}}) {
+                            if ui.box(
+                                ui.Box_Desc {
+                                    h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
+                                    v_size = {type = .BASED_ON_PARENT_PCT, value = 0.25},
+                                    color = {0.2, 0.5, 0.8},
+                                },
+                            ) {  }
+                        }
+                    }
 
+                    ui.label("WIDGETS")
+                    if ui.collapsable_header("header", &header) {
+                        if ui.panel("large container") {
+                            if ui.box(
+                                {
+                                    h_size = {type = .FIXED, value = 80},
+                                    v_size = {type = .FIXED, value = 50},
+                                    color = {0.8, 0.4, 0.2},
+                                },
+                            ) {
+                                if ui.button("button") {
+
+                                }
                             }
                         }
                     }
-                }
-                if ui.row() {
-                    if ui.panel("small container") {
-                        if ui.box(
-                            {
-                                h_size = {type = .FIXED, value = 30},
-                                v_size = {type = .FIXED, value = 25},
-                                color = {0.2, 0.5, 0.8},
-                            },
-                        ) {  }
+                    if ui.row() {
+                        if ui.panel("small container") {
+                            if ui.box(
+                                {
+                                    h_size = {type = .FIXED, value = 30},
+                                    v_size = {type = .FIXED, value = 25},
+                                    color = {0.2, 0.5, 0.8},
+                                },
+                            ) {  }
+                        }
+                        ui.checkbox("click me", &res)
                     }
-                    ui.checkbox("click me", &res)
+                    if ui.column() {
+                        ui.radio("low", &option, 0)
+                        ui.radio("medium", &option, 1)
+                        ui.radio("high", &option, 2)
+                    }
+                    ui.slider("red", &red, 0, 1)
                 }
-                if ui.column() {
-                    ui.radio("low", &option, 0)
-                    ui.radio("medium", &option, 1)
-                    ui.radio("high", &option, 2)
-                }
-                ui.slider("red", &red, 0, 1)
             }
         }
 
