@@ -523,6 +523,7 @@ toggle_box :: proc(title: string) -> ^Box {
 }
 @(private)
 normalize_f32 :: proc(value, min, max: f32) -> f32 {
+    if max - min == 0 do return -1
     return (value - min) / (max - min)
 }
 
@@ -609,27 +610,37 @@ scroll_custom_draw :: proc(elem: ^Box, value: rawptr) {
 
     append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
     normalized_val := normalize_f32(data.value^, data.min, data.max)
-    // @warn: only for axis horizontal
-    // this also needs to know which axis it is for
-    if data.type == .HORIZONTAL {
-        append(
-            &state.draw_commands,
-            {
-                rect = {{elem.pos.x + (elem.dimensions.x * normalized_val), elem.pos.y}, {10, elem.dimensions.y}},
-                color = {1, 0, 0},
-                type = .RECTANGLE,
-            },
-        )
-    } else {
-        append(
-            &state.draw_commands,
-            {
-                rect = {{elem.pos.x, elem.pos.y + (elem.dimensions.y * normalized_val)}, {elem.dimensions.x, 10}},
-                color = {1, 0, 0},
-                type = .RECTANGLE,
-            },
-        )
 
+    Arrow_Height :: 10.0
+
+    if normalized_val >= 0 {
+        view_ratios: [2]f32 = {elem.dimensions.x / elem.view_bounds.x, elem.dimensions.y / elem.view_bounds.y}
+        scroll_bar_areas: [2]f32 = {
+            max(0, elem.dimensions.x - Arrow_Height * 2),
+            max(0, elem.dimensions.y - Arrow_Height * 2),
+        }
+        thumb_area: [2]f32 = {scroll_bar_areas.x * view_ratios.x, scroll_bar_areas.y * view_ratios.y}
+
+        if data.type == .HORIZONTAL {
+            append(
+                &state.draw_commands,
+                {
+                    rect = {{elem.pos.x + (elem.dimensions.x * normalized_val), elem.pos.y}, {10, thumb_area.y}},
+                    color = {1, 0, 0},
+                    type = .RECTANGLE,
+                },
+            )
+        } else {
+            append(
+                &state.draw_commands,
+                {
+                    rect = {{elem.pos.x, elem.pos.y + (elem.dimensions.y * normalized_val)}, {thumb_area.x, 10}},
+                    color = {1, 0, 0},
+                    type = .RECTANGLE,
+                },
+            )
+
+        }
     }
 }
 

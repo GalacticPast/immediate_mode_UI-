@@ -131,20 +131,21 @@ main :: proc() {
                     "view",
                     {h_size = {type = .FIXED, value = 400}, v_size = {type = .FIXED, value = 500}},
                 ) {
-                    ui.box(
+                    if ui.box(
                         {
                             h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                             v_size = {type = .FIXED, value = 300},
                             color = {0, 1, 0},
                         },
-                    ){}
-                    ui.box(
+                    ) {
+                    }
+                    if ui.box(
                         {
                             h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
-                            v_size = {type = .FIXED, value = 400},
+                            v_size = {type = .FIXED, value = 1900},
                             color = {1, 0, 0},
                         },
-                    )
+                    ) {  }
                 }
             }
         }
