@@ -100,7 +100,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     if .SCROLLABLE_Y in box_flags {
         box_begin(
             description = Box_Desc {
-                h_size = {type = .BASED_ON_PARENT_PCT, value = 0.9},
+                h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                 children_layout_axis = .HORIZONTAL,
             },
@@ -135,25 +135,17 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         )
         if scroll_region.custom_data == nil {
             data := new(Scroll_Region_Data, state.allocator)
-            if .SCROLLABLE_X in box_flags {
-                data^.min.x = 0
-                data^.max.x = scroll_region.view_bounds.x
-            }
-            if .SCROLLABLE_Y in box_flags {
-                data^.min.y = 0
-                data^.max.y = scroll_region.view_bounds.y
-            }
             scroll_region.custom_data = data
         }
         // @warn: this is a frame late though
         data := cast(^Scroll_Region_Data)scroll_region.custom_data
         if .SCROLLABLE_X in box_flags {
             data.min.x = 0
-            data.max.x = scroll_region.view_bounds.x
+            data.max.x = max(0, scroll_region.view_bounds.x - scroll_region.dimensions.y)
         }
         if .SCROLLABLE_Y in box_flags {
             data.min.y = 0
-            data.max.y = scroll_region.view_bounds.y
+            data.max.y = max(0, scroll_region.view_bounds.y - scroll_region.dimensions.y)
         }
         scroll_region.custom_data = data
     }

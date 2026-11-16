@@ -624,8 +624,8 @@ calc_final_sizes :: proc(node: ^Box) {
                 combined_max_height_shrinkage += child.dimensions.y * (1 - child.v_size.strictness)
             }
         }
-        if .OVERFLOW_X not_in elem.flags {
-            if elem.children_layout_axis == .HORIZONTAL {
+        if elem.children_layout_axis == .HORIZONTAL {
+            if .OVERFLOW_X not_in elem.flags {
                 overflow_width := max(0, c_width - elem.dimensions.x)
                 if overflow_width > 0 && combined_max_width_shrinkage > 0 {
                     total_shrinkage := min(overflow_width, combined_max_width_shrinkage)
@@ -642,17 +642,24 @@ calc_final_sizes :: proc(node: ^Box) {
                         child.dimensions.y = min(elem.dimensions.y, child.dimensions.y)
                     }
                 }
-            }
-        } else {
-            for child := elem.first; child != nil; child = child.next {
+            } else {
+                // add the widths of all the children
+                max_height: f32 = 0
                 elem.view_bounds.x = 0
-                if .FLOATING_X not_in child.flags {
-                    elem.view_bounds.x += elem.dimensions.x + OFFSET_X // @warn: check if this is correct
+                for child := elem.first; child != nil; child = child.next {
+                    if .FLOATING_Y not_in child.flags {
+                        elem.view_bounds.x += child.dimensions.x
+                        max_height = max(child.dimensions.y, max_height)
+                    }
+                }
+                if .OVERFLOW_Y in elem.flags {
+                    elem.view_bounds.y = max_height
+                } else {
+                    elem.view_bounds.y = elem.dimensions.y
                 }
             }
-        }
-        if .OVERFLOW_Y not_in elem.flags {
-            if elem.children_layout_axis == .VERTICAL {
+        } else if elem.children_layout_axis == .VERTICAL {
+            if .OVERFLOW_Y not_in elem.flags {
                 overflow_height := max(0, c_height - elem.dimensions.y)
                 if overflow_height > 0 && combined_max_height_shrinkage > 0 {
                     total_shrinkage := min(overflow_height, combined_max_height_shrinkage)
@@ -669,13 +676,22 @@ calc_final_sizes :: proc(node: ^Box) {
                         child.dimensions.x = min(elem.dimensions.x, child.dimensions.x)
                     }
                 }
-            }
-        } else {
-            for child := elem.first; child != nil; child = child.next {
+            } else {
+                // add the height of all the children
+                max_width: f32 = 0
                 elem.view_bounds.y = 0
-                if .FLOATING_Y not_in child.flags {
-                    elem.view_bounds.y += elem.dimensions.y + 2 * OFFSET_Y // @warn: check if this is correct
+                for child := elem.first; child != nil; child = child.next {
+                    if .FLOATING_Y not_in child.flags {
+                        elem.view_bounds.y += child.dimensions.y
+                        max_width = max(child.dimensions.x, max_width)
+                    }
                 }
+                if .OVERFLOW_X in elem.flags {
+                    elem.view_bounds.x = max_width
+                } else {
+                    elem.view_bounds.x = elem.dimensions.x
+                }
+
             }
         }
     }
