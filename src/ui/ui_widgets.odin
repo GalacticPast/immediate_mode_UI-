@@ -98,7 +98,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     x_value: f32 = 1.0
     y_value: f32 = 1.0
     scroll_region: ^Box = nil
-    box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_X, .SCROLLABLE_Y}
+    box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_Y}
     if .SCROLLABLE_Y in box_flags {
         box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
     }
@@ -108,8 +108,8 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         if .SCROLLABLE_X in box_flags do x_value -= 0.1
         if .SCROLLABLE_Y in box_flags do y_value -= 0.1
 
-        box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = x_value, strictness = 0.5}
-        box_v_size := description.v_size.? or_else {type = .BASED_ON_PARENT_PCT, value = y_value, strictness = 0.5}
+        box_h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = x_value, strictness = 0.9}
+        box_v_size := description.v_size.? or_else {type = .BASED_ON_PARENT_PCT, value = y_value, strictness = 0.9}
         box_children_layout_axis := description.children_layout_axis.? or_else .VERTICAL
         box_color := description.color.? or_else state.def_color
         text_align := description.text_algin_flag.? or_else .CENTER

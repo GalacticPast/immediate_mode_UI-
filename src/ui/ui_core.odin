@@ -673,8 +673,8 @@ calc_final_sizes :: proc(node: ^Box) {
         } else {
             for child := elem.first; child != nil; child = child.next {
                 elem.view_bounds.y = 0
-                if .FLOATING_X not_in child.flags {
-                    elem.view_bounds.y += elem.dimensions.y + OFFSET_Y // @warn: check if this is correct
+                if .FLOATING_Y not_in child.flags {
+                    elem.view_bounds.y += elem.dimensions.y + 2 * OFFSET_Y // @warn: check if this is correct
                 }
             }
         }
