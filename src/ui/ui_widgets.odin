@@ -141,7 +141,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
         data := cast(^Scroll_Region_Data)scroll_region.custom_data
         if .SCROLLABLE_X in box_flags {
             data.min.x = 0
-            data.max.x = max(0, scroll_region.view_bounds.x - scroll_region.dimensions.y)
+            data.max.x = max(0, scroll_region.view_bounds.x - scroll_region.dimensions.x)
         }
         if .SCROLLABLE_Y in box_flags {
             data.min.y = 0
