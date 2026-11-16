@@ -85,13 +85,11 @@ panel_end :: proc(_: bool) {
 @(deferred_out = scroll_region_end)
 scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     //@note parent which encloses all
+    h_size := description.h_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1}
+    v_size := description.v_size.? or_else {type = .BASED_ON_PARENT_PCT, value = 1}
     box_begin(
         fmt.aprintf("%s_parent", label, allocator = state.frame_allocator),
-        description = Box_Desc {
-            h_size = {type = .FIXED, value = 400},
-            v_size = {type = .FIXED, value = 300},
-            flags = {.CLIP},
-        },
+        description = Box_Desc{h_size = h_size, v_size = v_size},
     )
 
     // @note: scroll region
@@ -100,7 +98,13 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
     scroll_region: ^Box = nil
     box_flags := description.flags.? or_else {.DRAW_RECT, .OVERFLOW_Y, .OVERFLOW_X, .SCROLLABLE_Y}
     if .SCROLLABLE_Y in box_flags {
-        box_begin(description = Box_Desc{children_layout_axis = .HORIZONTAL})
+        box_begin(
+            description = Box_Desc {
+                h_size = {type = .BASED_ON_PARENT_PCT, value = 0.9},
+                v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+                children_layout_axis = .HORIZONTAL,
+            },
+        )
     }
     {
         // @todo: choose better defaults

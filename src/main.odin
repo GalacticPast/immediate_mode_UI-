@@ -99,20 +99,8 @@ main :: proc() {
 
     run := true
 
-    res: bool = false
-    first_menu_open: bool = false
-    second_menu_open: bool = false
-    last_action := "No button clicked"
-    mouse_pos: pl.Vector2
-    have_mouse_pos := false
-    option: u32 = 0
-    red: f32 = 0
-    header: bool = false
-    show_clipping_checks := false
-    clipping_action := "No clipping target clicked"
     for run {
         list := pl.get_events()
-        same_frame_click := false
         e := list.head
         for e != nil {
             eat: ^pl.Event
@@ -125,23 +113,6 @@ main :: proc() {
                         run = false
                         eat = e
                     }
-                case .KEY_PRESS:
-                    if e.key == .C {
-                        show_clipping_checks = !show_clipping_checks
-                        eat = e
-                    }
-                    if e.key == .R && show_clipping_checks {
-                        clipping_action = "No clipping target clicked"
-                        eat = e
-                    }
-                    if e.key == .SPACE {
-                        same_frame_click = have_mouse_pos
-                        last_action = "Space sent: no button clicked"
-                        eat = e
-                    }
-                case .MOUSE_MOVE:
-                    mouse_pos = e.pos
-                    have_mouse_pos = true
             }
             e = e.next
             if eat != nil {
@@ -150,141 +121,30 @@ main :: proc() {
         }
 
         // @note: Space makes the press and release deterministic even on slow frames.
-        synthetic_press := pl.Event {
-            type = .MOUSE_BTN_PRESSED,
-            key  = .BTN_LEFT,
-            pos  = mouse_pos,
-        }
-        synthetic_release := pl.Event {
-            type = .MOUSE_BTN_RELEASED,
-            key  = .BTN_LEFT,
-            pos  = mouse_pos,
-        }
-        if same_frame_click {
-            synthetic_press.prev = list.tail
-            synthetic_press.next = &synthetic_release
-            synthetic_release.prev = &synthetic_press
-            if list.tail != nil {
-                list.tail.next = &synthetic_press
-            } else {
-                list.head = &synthetic_press
-            }
-            list.tail = &synthetic_release
-            list.length += 2
-        }
-
         if ui.build(list) {
             description := ui.Box_Desc {
                 h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
-            if show_clipping_checks {
-                clipping_checks(&clipping_action)
-            } else if ui.panel("panel", description) {
-                if ui.scroll_region("view") {
-                    ui.label("INPUT: click overlapping menu items; status should name the item")
-                    ui.label("Menu built before underlying button")
-                    overlap_check(true, &first_menu_open, &last_action)
-                    ui.label("Underlying button built before menu")
-                    overlap_check(false, &second_menu_open, &last_action)
-                    ui.label(last_action)
-                    ui.label("Hover, hold, right-click, drag in; Space sends press and release together")
-                    if ui.button("Reset click status") {
-                        last_action = "No button clicked"
-                    }
-
-                    ui.label("LAYOUT: colored boxes should stack without overlap")
-                    if ui.row() {
-                        if ui.panel(
-                            "Horizontal sample",
-                            ui.Box_Desc{children_layout_axis = .HORIZONTAL, color = {0.1, 0.1, 0.1}},
-                        ) {
-                            if ui.box(
-                                ui.Box_Desc {
-                                    h_size = {type = .FIXED, value = 40},
-                                    v_size = {type = .FIXED, value = 20},
-                                    color = {0.8, 0.3, 0.2},
-                                },
-                            ) {  }
-                            if ui.box(
-                                ui.Box_Desc {
-                                    h_size = {type = .FIXED, value = 25},
-                                    v_size = {type = .FIXED, value = 15},
-                                    color = {0.2, 0.5, 0.8},
-                                },
-                            ) {  }
-                        }
-                        if ui.panel("Vertical sample", ui.Box_Desc{color = {0.1, 0.1, 0.1}}) {
-                            if ui.box(
-                                ui.Box_Desc {
-                                    h_size = {type = .FIXED, value = 40},
-                                    v_size = {type = .FIXED, value = 20},
-                                    color = {0.8, 0.3, 0.2},
-                                },
-                            ) {  }
-                            if ui.box(
-                                ui.Box_Desc {
-                                    h_size = {type = .FIXED, value = 25},
-                                    v_size = {type = .FIXED, value = 15},
-                                    color = {0.2, 0.5, 0.8},
-                                },
-                            ) {  }
-                        }
-                    }
-                    ui.label("PERCENT: blue box is 100 x 30 inside a 200 x 120 panel")
-                    if ui.panel(
-                        "Percentage sample",
-                        ui.Box_Desc {
-                            h_size = {type = .FIXED, value = 200},
-                            v_size = {type = .FIXED, value = 120},
-                            color = {0.1, 0.1, 0.1},
+            if ui.panel("panel", description) {
+                if ui.scroll_region(
+                    "view",
+                    {h_size = {type = .FIXED, value = 400}, v_size = {type = .FIXED, value = 500}},
+                ) {
+                    if ui.box(
+                        {
+                            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+                            v_size = {type = .FIXED, value = 300},
+                            color = {0, 1, 0},
                         },
-                    ) {
-                        if ui.box(ui.Box_Desc{flags = {}}) {
-                            if ui.box(
-                                ui.Box_Desc {
-                                    h_size = {type = .BASED_ON_PARENT_PCT, value = 0.5},
-                                    v_size = {type = .BASED_ON_PARENT_PCT, value = 0.25},
-                                    color = {0.2, 0.5, 0.8},
-                                },
-                            ) {  }
-                        }
-                    }
-
-                    ui.label("WIDGETS")
-                    if ui.collapsable_header("header", &header) {
-                        if ui.panel("large container") {
-                            if ui.box(
-                                {
-                                    h_size = {type = .FIXED, value = 80},
-                                    v_size = {type = .FIXED, value = 50},
-                                    color = {0.8, 0.4, 0.2},
-                                },
-                            ) {
-                                if ui.button("button") {
-
-                                }
-                            }
-                        }
-                    }
-                    if ui.row() {
-                        if ui.panel("small container") {
-                            if ui.box(
-                                {
-                                    h_size = {type = .FIXED, value = 30},
-                                    v_size = {type = .FIXED, value = 25},
-                                    color = {0.2, 0.5, 0.8},
-                                },
-                            ) {  }
-                        }
-                        ui.checkbox("click me", &res)
-                    }
-                    if ui.column() {
-                        ui.radio("low", &option, 0)
-                        ui.radio("medium", &option, 1)
-                        ui.radio("high", &option, 2)
-                    }
-                    ui.slider("red", &red, 0, 1)
+                    ) {  }
+                    if ui.box(
+                        {
+                            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+                            v_size = {type = .FIXED, value = 400},
+                            color = {1, 0, 0},
+                        },
+                    ) {  }
                 }
             }
         }
