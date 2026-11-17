@@ -10,10 +10,11 @@ Scroll_Region_Data :: struct {
     max:   [2]f32,
 }
 Scroll_Box_Data :: struct {
-    type:  Axis_Type,
-    value: ^f32,
-    min:   f32,
-    max:   f32,
+    type:          Axis_Type,
+    scroll_region: ^Box,
+    value:         ^f32,
+    min:           ^f32,
+    max:           ^f32,
 }
 
 @(private)
@@ -581,25 +582,45 @@ scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
         scroll_box.custom_draw = scroll_custom_draw
     }
 
-    scroll_data := cast(^Scroll_Region_Data)scroll_region.custom_data
+    scroll_region_data := cast(^Scroll_Region_Data)scroll_region.custom_data
     (cast(^Scroll_Box_Data)scroll_box.custom_data)^ = {
-        type  = type,
-        value = &scroll_data.value.x if type == .HORIZONTAL else &scroll_data.value.y,
-        min   = scroll_data.min.x if type == .HORIZONTAL else scroll_data.min.y,
-        max   = scroll_data.max.x if type == .HORIZONTAL else scroll_data.max.y,
+        type          = type,
+        scroll_region = scroll_region,
+        value         = &scroll_region_data.value.x if type == .HORIZONTAL else &scroll_region_data.value.y,
+        min           = &scroll_region_data.min.x if type == .HORIZONTAL else &scroll_region_data.min.y,
+        max           = &scroll_region_data.max.x if type == .HORIZONTAL else &scroll_region_data.max.y,
     }
 
     data := cast(^Scroll_Box_Data)scroll_box.custom_data
     check_action(scroll_box)
+    // @note: this calculation uses the last frame's data
     if scroll_box.key == state.active_widget_key {
         if type == .HORIZONTAL {
-            total_range := data.max - data.min
-            value_change := (f32(state.mouse_dx.x) / scroll_box.dimensions.x) * total_range
-            data.value^ = clamp(value_change + data.value^, data.min, data.max)
+            range := scroll_region.view_bounds.x
+            if range != 0 {
+                view_ratio := scroll_region.dimensions.x / range
+                thumb_area := view_ratio * scroll_box.dimensions.x
+                track_length := scroll_box.dimensions.x - thumb_area
+
+                if track_length != 0 {
+                    total_range := data.max^ - data.min^
+                    value_change := (f32(state.mouse_dx.x) / track_length) * total_range
+                    data.value^ = clamp(value_change + data.value^, data.min^, data.max^)
+                }
+            }
         } else {
-            total_range := data.max - data.min
-            value_change := (f32(state.mouse_dx.y) / scroll_box.dimensions.y) * total_range
-            data.value^ = clamp(value_change + data.value^, data.min, data.max)
+            range := scroll_region.view_bounds.y
+            if range != 0 {
+                view_ratio := scroll_region.dimensions.y / range
+                thumb_area := view_ratio * scroll_box.dimensions.y
+                track_length := scroll_box.dimensions.y - thumb_area
+
+                if track_length != 0 {
+                    total_range := data.max^ - data.min^
+                    value_change := (f32(state.mouse_dx.y) / track_length) * total_range
+                    data.value^ = clamp(value_change + data.value^, data.min^, data.max^)
+                }
+            }
         }
     }
 }
@@ -607,34 +628,36 @@ scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
 @(private)
 scroll_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Scroll_Box_Data)value
-
+    scroll_region := data.scroll_region
     append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
-    normalized_val := normalize_f32(data.value^, data.min, data.max)
+    normalized_val := normalize_f32(data.value^, data.min^, data.max^)
 
     Arrow_Height :: 10.0
 
     if normalized_val >= 0 {
-        view_ratios: [2]f32 = {elem.dimensions.x / elem.view_bounds.x, elem.dimensions.y / elem.view_bounds.y}
-        scroll_bar_areas: [2]f32 = {
-            max(0, elem.dimensions.x - Arrow_Height * 2),
-            max(0, elem.dimensions.y - Arrow_Height * 2),
-        }
-        thumb_area: [2]f32 = {scroll_bar_areas.x * view_ratios.x, scroll_bar_areas.y * view_ratios.y}
 
         if data.type == .HORIZONTAL {
+            range := scroll_region.view_bounds.x
+            view_ratio := scroll_region.dimensions.x / range
+            thumb_area := view_ratio * elem.dimensions.x
+            track_length := elem.dimensions.x - thumb_area
             append(
                 &state.draw_commands,
                 {
-                    rect = {{elem.pos.x + (elem.dimensions.x * normalized_val), elem.pos.y}, {10, thumb_area.y}},
+                    rect = {{elem.pos.x + (track_length * normalized_val), elem.pos.y}, {thumb_area, Arrow_Height}},
                     color = {1, 0, 0},
                     type = .RECTANGLE,
                 },
             )
         } else {
+            range := scroll_region.view_bounds.y
+            view_ratio := scroll_region.dimensions.y / range
+            thumb_area := view_ratio * elem.dimensions.y
+            track_length := elem.dimensions.y - thumb_area
             append(
                 &state.draw_commands,
                 {
-                    rect = {{elem.pos.x, elem.pos.y + (elem.dimensions.y * normalized_val)}, {thumb_area.x, 10}},
+                    rect = {{elem.pos.x, elem.pos.y + (track_length * normalized_val)}, {Arrow_Height, thumb_area}},
                     color = {1, 0, 0},
                     type = .RECTANGLE,
                 },

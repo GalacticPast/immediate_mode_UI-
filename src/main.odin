@@ -129,11 +129,15 @@ main :: proc() {
             if ui.panel("panel", description) {
                 if ui.scroll_region(
                     "view",
-                    {h_size = {type = .FIXED, value = 400}, v_size = {type = .FIXED, value = 500}},
+                    {
+                        h_size = {type = .FIXED, value = 400},
+                        v_size = {type = .FIXED, value = 500},
+                        flags = {.SCROLLABLE_X, .SCROLLABLE_Y, .OVERFLOW_X, .OVERFLOW_Y},
+                    },
                 ) {
                     if ui.box(
                         {
-                            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+                            h_size = {type = .FIXED, value = 1000},
                             v_size = {type = .FIXED, value = 300},
                             color = {0, 1, 0},
                         },
