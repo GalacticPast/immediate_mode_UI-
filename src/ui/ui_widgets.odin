@@ -586,9 +586,9 @@ scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
                 track_length := scroll_box.dimensions.x - thumb_area
 
                 if track_length != 0 {
-                    total_range := data.max^ - data.min^
+                    total_range := max(0, scroll_region.view_bounds.x - scroll_region.dimensions.x)
                     value_change := (f32(state.mouse_dx.x) / track_length) * total_range
-                    data.value^ = clamp(value_change + data.value^, data.min^, data.max^)
+                    data.value^ = clamp(value_change + data.value^, 0, total_range)
                 }
             }
         } else {
@@ -599,9 +599,9 @@ scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
                 track_length := scroll_box.dimensions.y - thumb_area
 
                 if track_length != 0 {
-                    total_range := data.max^ - data.min^
+                    total_range := max(0, scroll_region.view_bounds.y - scroll_region.dimensions.y)
                     value_change := (f32(state.mouse_dx.y) / track_length) * total_range
-                    data.value^ = clamp(value_change + data.value^, data.min^, data.max^)
+                    data.value^ = clamp(value_change + data.value^, 0, total_range)
                 }
             }
         }
@@ -618,7 +618,7 @@ scroll_custom_draw :: proc(elem: ^Box, value: rawptr) {
         0,
         max(
             0,
-            scroll_region.view_bounds.x - scroll_region.dimensions.x if data.type == .HORIZONTAL else scroll_region.view_bounds.y - scroll_region.dimensions.y,
+            scroll_region.view_bounds.x - scroll_region.dimensions.x if data.type == .HORIZONTAL else scroll_region.view_bounds.y - scroll_region.dimensions.y, // use the updated view_bounds that was calculated this frame 
         ),
     ) // use the updated view_bounds
 

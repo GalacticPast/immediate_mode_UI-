@@ -663,9 +663,11 @@ calc_final_sizes :: proc(node: ^Box) {
 
                 if .OVERFLOW_X in elem.flags {
                     elem.view_bounds.x = view_bounds_x
+                    elem.view_offset.x = clamp(elem.view_offset.x, 0, max(0, elem.view_bounds.x - elem.dimensions.x))
                 }
                 if .OVERFLOW_Y in elem.flags {
                     elem.view_bounds.y = max_height
+                    elem.view_offset.y = clamp(elem.view_offset.y, 0, max(0, elem.view_bounds.y - elem.dimensions.y))
                 }
             }
         } else if elem.children_layout_axis == .VERTICAL {
@@ -710,9 +712,11 @@ calc_final_sizes :: proc(node: ^Box) {
 
                 if .OVERFLOW_Y in elem.flags {
                     elem.view_bounds.y = view_bounds_y
+                    elem.view_offset.y = clamp(elem.view_offset.y, 0, max(0, elem.view_bounds.y - elem.dimensions.y))
                 }
                 if .OVERFLOW_X in elem.flags {
                     elem.view_bounds.x = max_width
+                    elem.view_offset.x = clamp(elem.view_offset.x, 0, max(0, elem.view_bounds.x - elem.dimensions.x))
                 }
             }
         }
@@ -729,6 +733,7 @@ calc_positions :: proc(node: ^Box) {
     parent := node.parent
     pen_pos: [2]f32 = {parent.pos.x, parent.pos.y}
 
+    // if view_offset was changed this frame, then we have to clamp it with the new calculated dimensions
     if .OVERFLOW_X in parent.flags {
         pen_pos.x -= parent.view_offset.x
     }

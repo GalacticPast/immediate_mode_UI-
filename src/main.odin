@@ -97,7 +97,7 @@ main :: proc() {
     defer r.deinit()
     r.upload_to_gpu(glyphs)
 
-    fmt.printf(sizeof(ui.Box))
+    fmt.println("box struct size: ", size_of(ui.Box))
 
     res := false
     run := true
