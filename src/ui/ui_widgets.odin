@@ -4,17 +4,10 @@ import r "../renderer"
 import "core:fmt"
 
 @(private)
-Scroll_Region_Data :: struct {
-    value: [2]f32,
-    min:   [2]f32,
-    max:   [2]f32,
-}
 Scroll_Box_Data :: struct {
     type:          Axis_Type,
     scroll_region: ^Box,
     value:         ^f32,
-    min:           ^f32,
-    max:           ^f32,
 }
 
 @(private)
@@ -134,34 +127,26 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
             box_children_layout_axis,
             box_color,
         )
-        if scroll_region.custom_data == nil {
-            data := new(Scroll_Region_Data, state.allocator)
-            scroll_region.custom_data = data
-        }
         // @warn: this is a frame late though
-        data := cast(^Scroll_Region_Data)scroll_region.custom_data
-        if .SCROLLABLE_X in box_flags {
-            data.min.x = 0
-            data.max.x = max(0, scroll_region.view_bounds.x - scroll_region.dimensions.x)
-        }
-        if .SCROLLABLE_Y in box_flags {
-            data.min.y = 0
-            data.max.y = max(0, scroll_region.view_bounds.y - scroll_region.dimensions.y)
-        }
-        scroll_region.custom_data = data
+        // data := cast(^Scroll_Region_Data)scroll_region.custom_data
+        // if .SCROLLABLE_X in box_flags {
+        //     data.min.x = 0
+        //     data.max.x = max(0, scroll_region.view_bounds.x - scroll_region.dimensions.x)
+        // }
+        // if .SCROLLABLE_Y in box_flags {
+        //     data.min.y = 0
+        //     data.max.y = max(0, scroll_region.view_bounds.y - scroll_region.dimensions.y)
+        // }
     }
 
     // @note: scroll bar
     {
-        data := cast(^Scroll_Region_Data)scroll_region.custom_data
         if .SCROLLABLE_Y in box_flags {
             scroll_bar(scroll_region, .VERTICAL)
             pop(&state.curr_parent) // damn
-            scroll_region.view_offset.y = data.value.y
         }
         if .SCROLLABLE_X in box_flags {
             scroll_bar(scroll_region, .HORIZONTAL)
-            scroll_region.view_offset.x = data.value.x
         }
     }
     append(&state.curr_parent, scroll_region)
@@ -582,18 +567,16 @@ scroll_bar :: proc(scroll_region: ^Box, type: Axis_Type) {
         scroll_box.custom_draw = scroll_custom_draw
     }
 
-    scroll_region_data := cast(^Scroll_Region_Data)scroll_region.custom_data
     (cast(^Scroll_Box_Data)scroll_box.custom_data)^ = {
         type          = type,
         scroll_region = scroll_region,
-        value         = &scroll_region_data.value.x if type == .HORIZONTAL else &scroll_region_data.value.y,
-        min           = &scroll_region_data.min.x if type == .HORIZONTAL else &scroll_region_data.min.y,
-        max           = &scroll_region_data.max.x if type == .HORIZONTAL else &scroll_region_data.max.y,
+        value         = &scroll_region.view_offset.x if type == .HORIZONTAL else &scroll_region.view_offset.y,
     }
 
     data := cast(^Scroll_Box_Data)scroll_box.custom_data
     check_action(scroll_box)
     // @note: this calculation uses the last frame's data
+    // if later on the element bounds changes then we would have to clamp the view_offset with the new corrected min max value
     if scroll_box.key == state.active_widget_key {
         if type == .HORIZONTAL {
             range := scroll_region.view_bounds.x
@@ -630,7 +613,14 @@ scroll_custom_draw :: proc(elem: ^Box, value: rawptr) {
     data := cast(^Scroll_Box_Data)value
     scroll_region := data.scroll_region
     append(&state.draw_commands, {rect = {elem.pos, elem.dimensions}, color = {0.2, 0.5, 0}, type = .RECTANGLE})
-    normalized_val := normalize_f32(data.value^, data.min^, data.max^)
+    normalized_val := normalize_f32(
+        data.value^,
+        0,
+        max(
+            0,
+            scroll_region.view_bounds.x - scroll_region.dimensions.x if data.type == .HORIZONTAL else scroll_region.view_bounds.y - scroll_region.dimensions.y,
+        ),
+    ) // use the updated view_bounds
 
     Arrow_Height :: 10.0
 

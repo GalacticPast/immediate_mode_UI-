@@ -97,6 +97,9 @@ main :: proc() {
     defer r.deinit()
     r.upload_to_gpu(glyphs)
 
+    fmt.printf(sizeof(ui.Box))
+
+    res := false
     run := true
 
     for run {
@@ -135,21 +138,23 @@ main :: proc() {
                         flags = {.SCROLLABLE_X, .SCROLLABLE_Y, .OVERFLOW_X, .OVERFLOW_Y},
                     },
                 ) {
-                    if ui.box(
-                        {
-                            h_size = {type = .FIXED, value = 1000},
-                            v_size = {type = .FIXED, value = 300},
-                            color = {0, 1, 0},
-                        },
-                    ) {
+                    if ui.collapsable_header("wowowowowow", &res) {
+                        if ui.box(
+                            {
+                                h_size = {type = .FIXED, value = 1000},
+                                v_size = {type = .FIXED, value = 300},
+                                color = {0, 1, 0},
+                            },
+                        ) {
+                        }
+                        if ui.box(
+                            {
+                                h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
+                                v_size = {type = .FIXED, value = 1900},
+                                color = {1, 0, 0},
+                            },
+                        ) {  }
                     }
-                    if ui.box(
-                        {
-                            h_size = {type = .BASED_ON_PARENT_PCT, value = 1},
-                            v_size = {type = .FIXED, value = 1900},
-                            color = {1, 0, 0},
-                        },
-                    ) {  }
                 }
             }
         }
