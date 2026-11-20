@@ -15,6 +15,8 @@
 
 # UI
 
+- [x] Add a scroll region with draggable scrollbar thumbs.
+- [ ] Add a single-line text input; start by planning a small, testable first step.
 - [ ] Make spacing consistent across child-based sizing, constraint calculations, and positioning.
 - [x] Restore scoped `if` calls for builds, panels, rows, columns, and boxes.
 - [x] Add a checkbox with custom drawing and caller-owned state.

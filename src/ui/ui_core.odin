@@ -23,6 +23,7 @@ WIDGET_FLAG :: enum {
     DRAGGABLE,
     RESIZABLE,
     GRABBABLE,
+    TEXT,
 
     // @note: types
     CLIP,
