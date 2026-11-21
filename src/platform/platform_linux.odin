@@ -93,7 +93,7 @@ k_listener: wl.keyboard_listener = {
         //@todo: incomplete
         k_type := translate_key_code(sym)
         e := new(Event) // @warn: pointer dangling
-        e.key = k_type
+        e.payload = k_type
 
         switch state {
             case 0:

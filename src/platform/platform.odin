@@ -156,11 +156,14 @@ Key_Type :: enum {
 }
 
 Event :: struct {
-    next: ^Event,
-    prev: ^Event,
-    type: Event_Type,
-    key:  Key_Type,
-    pos:  Vector2,
+    next:    ^Event,
+    prev:    ^Event,
+    type:    Event_Type,
+    payload: union {
+        Key_Type,
+        rune,
+    },
+    pos:     Vector2,
 }
 
 Event_List :: struct {

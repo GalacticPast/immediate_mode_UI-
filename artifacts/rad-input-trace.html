@@ -1,0 +1,121 @@
+<div id="rd-input-trace">
+<style>
+#rd-input-trace {display:grid;gap:1rem;font-family:Inter,system-ui,sans-serif}
+#rd-input-trace .track {position:relative;padding-top:2.2rem;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));text-align:center}
+#rd-input-trace .track:before {content:"";position:absolute;top:1rem;left:10%;right:10%;height:2px;background:var(--border,GrayText)}
+#rd-input-trace .packet {position:absolute;top:0;left:10%;transform:translateX(-50%);transition:left .48s ease;background:var(--primary,Highlight);color:var(--primary-foreground,HighlightText);padding:.22rem .6rem;border-radius:1rem;font-family:monospace;white-space:nowrap}
+#rd-input-trace .track b {font-weight:400;color:var(--muted-foreground,GrayText)}
+#rd-input-trace .track b[aria-current=true] {font-weight:500;color:var(--foreground,CanvasText);text-decoration:underline;text-underline-offset:.25rem}
+#rd-input-trace .inspector {display:grid;gap:.5rem}
+#rd-input-trace td,#rd-input-trace th {text-align:left;overflow-wrap:anywhere}
+#rd-input-trace .line {display:flex;align-items:baseline;flex-wrap:wrap;gap:.65rem}
+#rd-input-trace .line code {overflow-wrap:anywhere}
+#rd-input-trace .controls {display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+#rd-input-trace .desc {min-height:2.6em}
+#rd-input-trace .watch {font-family:"IBM Plex Mono",monospace}
+@media(prefers-reduced-motion:reduce){#rd-input-trace .packet{transition:none}}
+</style>
+<h2>Follow one input through RAD Debugger</h2>
+<div class="viz-controls">
+<label class="form-label">OS backend<select class="form-select" data-id="os"><option value="linux">Linux · X11</option><option value="windows">Windows · Win32</option></select></label>
+<label class="form-label">Trace<select class="form-select" data-id="scenario"><option value="typed">Type “a” in an active field</option><option value="blocked">Type “a” with Text permission off</option><option value="blur">Type “a” with the field unfocused</option><option value="press">Press the left button inside a button</option></select></label>
+</div>
+<div class="track" aria-label="Current stage"><span class="packet" data-id="packet"></span><b>OS</b><b>WM list</b><b>Command</b><b>UI list</b><b>Widget</b></div>
+<div class="controls"><button class="btn btn-primary" data-id="play">Play</button><button class="btn" data-id="back">Back</button><button class="btn" data-id="next">Step</button><span class="tabular-nums" data-id="count"></span></div>
+<div class="inspector" aria-live="polite"><div class="line"><code data-id="fn"></code><a data-id="source" target="_blank" rel="noopener noreferrer">Source ↗</a></div><div class="desc" data-id="desc"></div></div>
+<table class="table table-sm"><thead><tr><th scope="col">Watch</th><th scope="col">Value after this step</th></tr></thead><tbody>
+<tr><td>WM list · traced node</td><td class="watch" data-id="wm"></td></tr>
+<tr><td>Debugger command</td><td class="watch" data-id="cmd"></td></tr>
+<tr><td>Window UI list · traced node</td><td class="watch" data-id="ui"></td></tr>
+<tr><td>Iterator / scope</td><td data-id="scope"></td></tr>
+<tr><td>Widget</td><td class="watch" data-id="field"></td></tr>
+</tbody></table>
+<script>
+(() => {
+  const root = document.getElementById('rd-input-trace');
+  const view = Object.fromEntries(Array.from(root.querySelectorAll('[data-id]'), n => [n.dataset.id, n]));
+  const stages = Array.from(root.querySelectorAll('.track b'));
+  const base = 'https://github.com/EpicGames/raddebugger/blob/5b0d5f67a46af5fffa52322e95a116dabf393103/src/';
+  const app = 'raddbg/raddbg_core.c#L';
+  const core = 'ui/ui_core.c#L';
+  const edit = 'ui/ui_basic_widgets.c#L';
+  let frames = [], index = 0, timer = null;
+  function trace(os, scenario) {
+    const linux = os === 'linux', mouse = scenario === 'press', blocked = scenario === 'blocked';
+    const backend = linux ? 'linux/window_manager/linux_window_manager.c#L' : 'win32/window_manager/win32_window_manager.c#L';
+    const kind = mouse ? 'Press(LeftMouseButton)' : 'Text(U+0061)';
+    const command = mouse ? 'WMEvent' : 'InsertText("a")';
+    const uiNode = mouse ? 'Press(LeftMouseButton)' : 'Text("a")';
+    const state = {wm:'∅', cmd:'—', ui:'∅', scope:'Outside the widget', field:mouse ? 'button idle' : 'buffer = "hi" · cursor = 2'};
+    const out = [];
+    function step(stage, tag, fn, desc, path, delta = {}) {
+      Object.assign(state, delta);
+      out.push({...state, stage, tag, fn, desc, path});
+    }
+    step(0,mouse?'press':'a','wm_get_events',linux ? 'Check XPending. When idle, poll the X connection and wakeup descriptor. XNextEvent takes the next native event.' : 'Wait with GetMessageW when needed, drain with PeekMessageW, then translate and dispatch each message to the window procedure.',backend+(linux?1136:1547));
+    const platformDetail = mouse ? 'The backend records a left-button press with its window and pointer position.' : linux ? 'Xutf8LookupString supplies UTF-8 text. For the printable code point, the backend appends a Text node. The key press has its own node.' : 'The window procedure receives WM_CHAR for the typed letter and appends a Text node. The key-down message has its own handling.';
+    step(1,'WM #1',linux ? 'wm_get_events' : 'w32_wm_push_event',platformDetail,backend+(mouse?(linux?1316:387):(linux?1267:506)),{wm:kind});
+    step(2,'cmd','rd_cmd',mouse ? 'This press falls through to WMEvent. The command carries the WM event for conversion.' : 'For an ordinary unclaimed “a”, the frontend encodes the character as UTF-8 and queues InsertText for this window.',app+(mouse?12456:12443),{cmd:command+' · queued'});
+    step(1,'unlink','wm_eat_event','Routing has claimed the WM node. Unlink it from the WM list. Its command still carries the information needed for the next step.',app+12466,{wm:'∅ · #1 unlinked'});
+    step(3,'UI #2','ui_event_list_push','The command handler creates a fresh UI event and appends it to the destination window’s UI list.',app+(mouse?17514:18101),{ui:uiNode,cmd:command+' · dispatched'});
+    step(3,'UI #2','ui_begin_build','The window passes its UI list into the build. Widget code now has access to that same list.',app+6013);
+    if (!mouse) {
+      step(4,'focus','ui_line_edit',scenario === 'blur' ? 'This field lacks active focus, so it skips the editing loop. The node is still available to another reader this frame.' : 'The field has active editing focus. It enters its event loop and requests the next visible event.',edit+225,{scope:scenario === 'blur'?'Field skips editing loop':'Editing loop entered'});
+    }
+    if (scenario !== 'blur') {
+      step(3,'read','ui_next_event',blocked ? 'The top permission mask excludes Text. The iterator passes over #2 without removing it.' : 'The iterator checks the top permission mask and returns #2 to the caller. Reading leaves the node linked.',core+474,{scope:blocked?'Text off → skipped':'Permission allows event → returned'});
+      if (blocked) {
+        step(3,'read','ui_next_event','Example later reader: after the restricted scope ends, it starts a new scan with Text allowed. It can see the same #2. Here it only reads it.',core+536,{scope:'Later scope · Text on → same node visible'});
+      } else {
+        step(4,mouse?'press':'edit',mouse?'ui_signal_from_box':'ui_line_edit',mouse ? 'The press lies inside a mouse-clickable box. The handler records the active box key and a LeftPressed signal.' : 'The insert operation replaces the empty selection at the cursor. The buffer changes while #2 is still linked.',mouse?core+2840:edit+241,{field:mouse?'active[left] = button · LeftPressed':'buffer = "hia" · cursor = 3'});
+        step(3,'unlink','ui_eat_event → ui_eat_event_node','The handler claims #2. The list unlinks that node and decrements its count. A later widget scanning this list cannot find #2.',core+96,{ui:'∅ · #2 unlinked',scope:'Handled'});
+      }
+    }
+    step(3,'end','rd_window_frame returns','After building this window, the frontend clears its UI list. Any unclaimed input left in that list expires here.',app+18832,{ui:'∅ · end of window frame',scope:'Frame complete'});
+    return out;
+  }
+  function draw() {
+    const frame = frames[index];
+    for (const key of ['wm','cmd','ui','scope','field','fn','desc']) view[key].textContent = frame[key];
+    view.packet.textContent = frame.tag;
+    view.packet.style.left = (10+20*frame.stage)+'%';
+    stages.forEach((n,i)=>n.setAttribute('aria-current',String(i===frame.stage)));
+    view.source.href = base+frame.path;
+    view.count.textContent = (index+1)+' / '+frames.length;
+    view.back.disabled = index===0;
+    view.next.disabled = index===frames.length-1;
+    view.play.textContent = timer!==null ? 'Pause' : view.next.disabled ? 'Replay' : 'Play';
+  }
+  function stop() { clearInterval(timer); timer=null; }
+  function save() {
+    window.openai?.setWidgetState?.({modelContent:{scenario:view.scenario.value,os:view.os.value,step:index+1},privateContent:{scenario:view.scenario.value,os:view.os.value,index}})?.catch(()=>{});
+  }
+  function go(i) {
+    index=Math.max(0,Math.min(frames.length-1,i));
+    if (index===frames.length-1) stop();
+    draw(); save();
+  }
+  function rebuild(state={}) {
+    stop();
+    if (['windows','linux'].includes(state.os)) view.os.value=state.os;
+    if (['typed','blocked','blur','press'].includes(state.scenario)) view.scenario.value=state.scenario;
+    frames=trace(view.os.value,view.scenario.value);
+    index=Math.max(0,Math.min(frames.length-1,Number.isInteger(state.index)?state.index:0));
+    draw();
+  }
+  for (const control of [view.os,view.scenario]) control.onchange=()=>{rebuild();save();};
+  view.next.onclick=()=>{stop();go(index+1);};
+  view.back.onclick=()=>{stop();go(index-1);};
+  view.play.onclick=()=>{
+    if (timer!==null) stop();
+    else {if(index===frames.length-1) index=0; timer=setInterval(()=>go(index+1),2400);}
+    draw();
+  };
+  window.addEventListener('openai:set_globals',event=>{
+    const state=event.detail?.globals?.widgetState?.privateContent;
+    if(state && (state.index!==index || state.scenario!==view.scenario.value || state.os!==view.os.value)) rebuild(state);
+  });
+  rebuild(window.openai?.widgetState?.privateContent || {});
+})();
+</script>
+</div>

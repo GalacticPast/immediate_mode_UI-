@@ -1,0 +1,107 @@
+<div id="event-debugger">
+  <style>
+    #event-debugger { display:grid; gap:1rem; color:var(--foreground); }
+    #event-debugger .setup, #event-debugger .toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:.75rem; }
+    #event-debugger .field { display:grid; gap:.25rem; flex:1 1 13rem; }
+    #event-debugger .stage { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; }
+    #event-debugger .stage div { padding:.45rem .35rem; border-bottom:2px solid var(--border); color:var(--muted-foreground); overflow-wrap:anywhere; }
+    #event-debugger .stage .active { border-color:var(--primary); color:var(--foreground); font-weight:500; }
+    #event-debugger .machine { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+    #event-debugger .area { min-width:0; display:grid; align-content:start; gap:.35rem; }
+    #event-debugger .area strong { font-weight:500; }
+    #event-debugger .data { background:var(--muted); color:var(--foreground); padding:.65rem; border-radius:.4rem; min-height:3.5rem; overflow-wrap:anywhere; }
+    #event-debugger .data em { font-style:normal; color:var(--muted-foreground); }
+    #event-debugger .focus { outline:2px solid var(--ring); outline-offset:2px; }
+    #event-debugger .detail { display:grid; gap:.4rem; }
+    #event-debugger .code { white-space:pre-wrap; overflow-wrap:anywhere; font-family:monospace; }
+    #event-debugger .muted { color:var(--muted-foreground); }
+    @media (max-width:480px) { #event-debugger .stage {grid-template-columns:repeat(2,minmax(0,1fr));} #event-debugger .machine {grid-template-columns:1fr;} }
+  </style>
+  <div class="setup">
+    <label class="field"><span>Implementation</span><select id="ed-model" class="form-select"><option value="rad">RAD Debugger</option><option value="branch">Your rad branch</option></select></label>
+    <label class="field"><span>Scenario</span><select id="ed-scenario" class="form-select"><option value="allow">Focused field · text allowed</option><option value="blocked">Focused field · text blocked</option><option value="unfocused">Field has no active focus</option></select></label>
+  </div>
+  <div class="toolbar"><button type="button" class="btn" id="ed-back">← Back</button><button type="button" class="btn btn-primary" id="ed-forward">Step →</button><button type="button" class="btn" id="ed-play">▶ Play</button><button type="button" class="btn btn-ghost" id="ed-reset">Restart</button><span id="ed-counter" class="muted"></span></div>
+  <div class="stage" aria-label="Event path"><div data-stage="0">1 · Platform</div><div data-stage="1">2 · Event list</div><div data-stage="2">3 · UI code</div><div data-stage="3">4 · Result</div></div>
+  <div class="machine" aria-label="Live state">
+    <div class="area"><strong>UI event list</strong><div class="data" id="ed-list"></div></div>
+    <div class="area"><strong>Currently executing</strong><div class="data" id="ed-executing"></div></div>
+    <div class="area"><strong>Focus / permission</strong><div class="data" id="ed-gate"></div></div>
+    <div class="area"><strong>Text field buffer</strong><div class="data" id="ed-buffer"></div></div>
+  </div>
+  <div class="card detail" aria-live="polite"><strong id="ed-title"></strong><span id="ed-explain"></span><span class="code" id="ed-code"></span><a id="ed-source" target="_blank" rel="noopener noreferrer">Read the relevant source</a></div>
+  <script>
+    (() => {
+      const root = document.getElementById('event-debugger');
+      const el = id => root.querySelector('#ed-' + id);
+      const model = el('model'), scenario = el('scenario');
+      const sourceBase = 'https://github.com/EpicGames/raddebugger/blob/master/';
+      const branchBase = 'https://github.com/GalacticPast/immediate_mode_UI-/blob/952c0f70d761c96bd2e69d8d92605f05218d57f9/';
+      const saved = window.openai?.widgetState?.privateContent || {};
+      let index = Number.isInteger(saved.index) ? saved.index : 0;
+      let timer = null;
+      model.value = ['rad','branch'].includes(saved.model) ? saved.model : 'rad';
+      scenario.value = ['allow','blocked','unfocused'].includes(saved.scenario) ? saved.scenario : 'allow';
+      const s = (stage, active, title, explain, code, source, list='pending', buffer='hi', scope='') => ({stage,active,title,explain,code,source,list,buffer,scope});
+      function makeSteps() {
+        const rad = model.value === 'rad';
+        const focus = scenario.value !== 'unfocused';
+        const blocked = rad && scenario.value === 'blocked';
+        const core = rad ? sourceBase + 'src/ui/ui_core.c' : branchBase + 'src/ui/core.odin';
+        const widget = rad ? sourceBase + 'src/ui/ui_basic_widgets.c' : branchBase + 'src/ui/widgets.odin';
+        const steps = [
+          s(0,'executing','A character is typed','We trace one text event carrying “a”. Other simultaneous events are omitted to keep this example small.', rad ? 'event: kind = Text, string = "a"' : 'event: kind = .TEXT_INPUT, text = \'a\'',rad ? sourceBase + 'src/ui/ui_core.h#L82-L94' : branchBase + 'src/platform/platform_linux.odin#L133-L150','none'),
+          s(1,'list','An event list reaches the UI',rad ? 'ui_begin_build receives a UI_EventList and stores it in UI state.' : 'ui_events converts the platform event. begin_build copies it into the UI state array and clears its consumed flag.',rad ? 'UI_EventList → ui_state->events' : 'platform .TEXT_INPUT → UI .Text\ne.consumed = false',rad ? core + '#L848-L852' : branchBase + 'src/ui_bridge.odin#L49-L78'),
+          s(2,'gate','The line edit checks focus',focus ? 'The field owns active focus, so its text-editing code can inspect events.' : 'This field does not own active focus. Its text-editing loop is not entered; this event stays available to other code.',rad ? 'if (is_focus_active) …' : 'editing = (s.focus_active == b.key)',rad ? widget + '#L202-L228' : widget + '#L374-L400')
+        ];
+        if (!focus) return steps.concat([s(3,'list','No edit by this field','The event is still available during this build. This does not promise it will survive into the next frame.', 'buffer remains "hi"',rad ? widget + '#L223-L228' : widget + '#L398-L401')]);
+        if (rad) {
+          steps.push(s(2,'gate','ui_next_event reads permissions',blocked ? 'The current code path has Text disabled. The iterator examines the event but skips it; it does not unlink the event.' : 'The current code path has Text enabled. The iterator returns the text event to the line edit.',blocked ? 'Text permission absent → skip event' : 'Text permission present → return event',core + '#L470-L545','pending','hi',blocked ? 'Text: blocked' : 'Text: allowed'));
+          if (blocked) return steps.concat([
+            s(2,'list','The event remains in the list','Filtering affects what this call can see. It does not consume the event; another code path may inspect it with different permissions.', 'list: [ Text("a") ]',core + '#L533-L555','pending','hi','Text: blocked'),
+            s(3,'gate','A later code path can see it','Example: after the permission scope changes, another call to ui_next_event with Text allowed can return the same event. It remains present unless code consumes it.', 'new scope: Text allowed → event visible',core + '#L470-L545','pending','hi','Text: allowed')
+          ]);
+          steps.push(s(2,'buffer','The line edit applies the text operation','The returned event is translated to a replace operation and applied to the edit buffer. In this example the cursor is at the end.','buffer: "hi" → "hia"',widget + '#L223-L247','pending','hia','Text: allowed'));
+          steps.push(s(3,'list','The event is consumed','The line edit calls ui_eat_event. RAD Debugger unlinks the event from its event list.','ui_eat_event(evt) → remove node',core + '#L548-L555','removed','hia','Text: allowed'));
+        } else {
+          steps.push(s(2,'list','The line edit scans the UI array','It skips events already marked consumed. This event is unconsumed, so it can be examined.','e.consumed == false → inspect',widget + '#L398-L411'));
+          steps.push(s(2,'executing','The event becomes an edit operation','text_op_from_event recognizes .Text and returns an operation that inserts the rune.','kind = .Text → insert_rune = \'a\'',branchBase + 'src/ui/text_edit.odin#L45-L66'));
+          steps.push(s(2,'list','The event is marked consumed','The line edit marks the array entry consumed. It stays in the array, but later handlers that check the flag skip it.','e.consumed = true',widget + '#L409-L411','consumed'));
+          steps.push(s(3,'buffer','The operation updates the buffer','The rune is encoded as UTF-8 and applied to the text buffer. In this example the cursor is at the end.','buffer: "hi" → "hia"',widget + '#L413-L426','consumed','hia'));
+        }
+        steps.push(s(3,'list','A later handler checks the list',rad ? 'The handled event has been unlinked, so a later iterator cannot return it.' : 'The entry is still in the array with consumed = true, so a later handler that checks consumed skips it.',rad ? 'event absent from list' : 'entry present; consumed = true',rad ? core + '#L548-L555' : core + '#L386-L394',rad ? 'removed' : 'consumed','hia',rad ? 'Text: allowed' : ''));
+        return steps;
+      }
+      function render() {
+        const branch = model.value === 'branch';
+        const blockedOption = scenario.querySelector('option[value="blocked"]');
+        blockedOption.disabled = branch;
+        if (branch && scenario.value === 'blocked') scenario.value = 'allow';
+        const steps = makeSteps(); index = Math.max(0,Math.min(index,steps.length-1));
+        const p = steps[index];
+        root.querySelectorAll('[data-stage]').forEach(node => node.classList.toggle('active',Number(node.dataset.stage) === p.stage));
+        ['list','executing','gate','buffer'].forEach(name => el(name).classList.toggle('focus',p.active === name));
+        const list = p.list === 'none' ? 'No UI event yet' : p.list === 'removed' ? '[]  (event unlinked)' : p.list === 'consumed' ? '[ .Text(\'a\')  ·  consumed = true ]' : branch ? '[ .Text(\'a\')  ·  consumed = false ]' : '[ Text("a")  ·  in list ]';
+        el('list').textContent = list;
+        el('executing').textContent = p.title;
+        const focusText = scenario.value === 'unfocused' ? 'Focus: another box / none' : 'Focus: line edit';
+        el('gate').textContent = branch ? focusText + ' · no permission stack' : focusText + ' · ' + (p.scope || (scenario.value === 'blocked' ? 'Text: blocked' : 'Text: allowed'));
+        el('buffer').textContent = '"' + p.buffer + '"';
+        el('title').textContent = p.title; el('explain').textContent = p.explain; el('code').textContent = p.code; el('source').href = p.source;
+        el('counter').textContent = 'Step ' + (index+1) + ' / ' + steps.length;
+        el('back').disabled = index === 0; el('forward').disabled = index === steps.length-1;
+        el('play').textContent = timer ? '⏸ Pause' : '▶ Play';
+      }
+      function save() { if (window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{implementation:model.value, scenario:scenario.value, step:index+1},privateContent:{model:model.value,scenario:scenario.value,index}}).catch(() => {}); }
+      function stop() { if (timer) clearInterval(timer); timer = null; }
+      function step(delta) { index += delta; render(); save(); }
+      el('back').addEventListener('click', () => { stop(); step(-1); });
+      el('forward').addEventListener('click', () => { stop(); step(1); });
+      el('reset').addEventListener('click', () => { stop(); index = 0; render(); save(); });
+      el('play').addEventListener('click', () => { if (timer) { stop(); render(); return; } if (index >= makeSteps().length-1) index = 0; timer = setInterval(() => { if (index >= makeSteps().length-1) { stop(); render(); return; } step(1); }, 1700); render(); });
+      [model,scenario].forEach(control => control.addEventListener('change', () => { stop(); index = 0; render(); save(); }));
+      window.addEventListener('openai:set_globals', e => { const state = e.detail?.globals?.widgetState?.privateContent; if (!state) return; stop(); if (['rad','branch'].includes(state.model)) model.value = state.model; if (['allow','blocked','unfocused'].includes(state.scenario)) scenario.value = state.scenario; if (Number.isInteger(state.index)) index = state.index; render(); });
+      render();
+    })();
+  </script>
+</div>

@@ -179,6 +179,7 @@ deinit :: proc() {
     mem.dynamic_arena_destroy(&state.arena)
 }
 
+
 @(deferred_out = build_end)
 build :: proc(events: pl.Event_List) -> bool {
     state.curr_build_index += 1
@@ -201,11 +202,11 @@ build :: proc(events: pl.Event_List) -> bool {
                 state.mouse_pos = e.pos
                 eat = e
             case .MOUSE_BTN_PRESSED:
-                state.mouse_btn_press = e.key
-                state.mouse_btn_held = e.key
+                state.mouse_btn_press = e.payload.(pl.Key_Type)
+                state.mouse_btn_held = e.payload.(pl.Key_Type)
                 eat = e
             case .MOUSE_BTN_RELEASED:
-                if state.mouse_btn_press == e.key {
+                if state.mouse_btn_press == e.payload.(pl.Key_Type) {
                     state.mouse_btn_held = .NONE
                 } else {
                     state.mouse_btn_held = .NONE
@@ -214,7 +215,7 @@ build :: proc(events: pl.Event_List) -> bool {
                 eat = e
             case .KEY_PRESS:
                 {
-                    if e.key == .D {
+                    if e.payload.(pl.Key_Type) == .D {
                         state.debug = !state.debug
                         eat = e
                     }
