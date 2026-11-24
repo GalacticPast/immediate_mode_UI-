@@ -19,6 +19,7 @@ Platform_Windows_State :: struct {
     height:         i32,
     display_scale:  f32,
     deadline:       time.Tick,
+    high_surrogate: u16,
 }
 @(private = "file")
 p_w_state: Platform_Windows_State
@@ -80,7 +81,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
         // @note: still fall through to DefWindowProc, alt+f4 and the alt menu go through the SYSKEY messages
         case win.WM_KEYDOWN, win.WM_SYSKEYDOWN, win.WM_KEYUP, win.WM_SYSKEYUP:
             e: Event = {
-                key = translate_key_code(w_param),
+                payload = translate_key_code(w_param),
             }
             if msg == win.WM_KEYUP || msg == win.WM_SYSKEYUP {
                 e.type = .KEY_RELEASE
@@ -90,6 +91,22 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
                 e.type = was_down ? .KEY_REPEAT : .KEY_PRESS
             }
             push_window_event(e)
+        case win.WM_KILLFOCUS:
+            p_w_state.high_surrogate = 0
+            push_window_event({type = .KEYBOARD_LEAVE})
+        case win.WM_CHAR:
+            unit := u16(w_param)
+            if 0xd800 <= unit && unit <= 0xdbff {
+                p_w_state.high_surrogate = unit
+                return 0
+            }
+            ch := rune(unit)
+            if 0xdc00 <= unit && unit <= 0xdfff && p_w_state.high_surrogate != 0 {
+                ch = 0x10000 + ((rune(p_w_state.high_surrogate) - 0xd800) << 10) + (rune(unit) - 0xdc00)
+            }
+            p_w_state.high_surrogate = 0
+            if printable_input(ch) do push_window_event({type = .TEXT_INPUT, payload = ch})
+            return 0
         case win.WM_MOUSEMOVE:
             push_window_event(
                 {
@@ -103,13 +120,13 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, w_param: win.WPARAM
             )
             return 0
         case win.WM_LBUTTONDOWN:
-            push_window_event({type = .MOUSE_BTN_PRESSED, key = .BTN_LEFT})
+            push_window_event({type = .MOUSE_BTN_PRESSED, payload = Key_Type.BTN_LEFT})
         case win.WM_LBUTTONUP:
-            push_window_event({type = .MOUSE_BTN_RELEASED, key = .BTN_LEFT})
+            push_window_event({type = .MOUSE_BTN_RELEASED, payload = Key_Type.BTN_LEFT})
         case win.WM_RBUTTONDOWN:
-            push_window_event({type = .MOUSE_BTN_PRESSED, key = .BTN_RIGHT})
+            push_window_event({type = .MOUSE_BTN_PRESSED, payload = Key_Type.BTN_RIGHT})
         case win.WM_RBUTTONUP:
-            push_window_event({type = .MOUSE_BTN_RELEASED, key = .BTN_RIGHT})
+            push_window_event({type = .MOUSE_BTN_RELEASED, payload = Key_Type.BTN_RIGHT})
     }
 
     return win.DefWindowProcW(hwnd, msg, w_param, l_param)

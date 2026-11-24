@@ -3,6 +3,16 @@
 Run `./build.sh` on Linux or `build.bat` on Windows, then run the app from
 the project root with `./bin/app` or `bin\app.exe`.
 
+The demo includes a single-line text field. Click to place the caret, type to insert,
+and use Left, Right, Home, End, Backspace, or Delete to edit. Enter or a click
+outside the field releases keyboard focus. In your own UI, pass a stable ID and a
+caller-owned UTF-8 byte buffer to `ui.text_edit("name", &buffer)`. It returns
+`true` when user input changes the buffer.
+
+The field uses Odin’s bundled `kb_text_shape` for OpenType shaping and Unicode
+grapheme boundaries. On Linux the scripts use `cc` and `ar` to build the archive
+under `bin/vendor` if the Odin installation omits it.
+
 Run the automated tests on Linux with `./test/run.sh`. The runner copies the
 sources and tests into a temporary tree so the tests can access package-private
 procedures while remaining in `test/`.

@@ -13,6 +13,8 @@ Event_Type :: enum {
     KEY_PRESS,
     KEY_RELEASE,
     KEY_REPEAT,
+    TEXT_INPUT,
+    KEYBOARD_LEAVE,
     MOUSE_MOVE,
     MOUSE_BTN_PRESSED,
     MOUSE_BTN_RELEASED,
@@ -164,6 +166,12 @@ Event :: struct {
         rune,
     },
     pos:     Vector2,
+}
+
+// Native text messages can include control characters for editing keys.
+printable_input :: proc "contextless" (ch: rune) -> bool {
+    return ch >= ' ' && !(0x7f <= ch && ch <= 0x9f) &&
+           !(0xd800 <= ch && ch <= 0xdfff) && ch <= 0x10ffff && ch != 0x2028 && ch != 0x2029
 }
 
 Event_List :: struct {

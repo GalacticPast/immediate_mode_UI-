@@ -6,6 +6,9 @@ import "../text"
 @(test)
 text_measurement_handles_lines_tabs_and_fallback_glyphs :: proc(t: ^testing.T) {
     glyphs: text.Glyphs
+    storage: [128]text.Glyph_Data
+    glyphs.data = storage[:]
+    for &id, i in glyphs.ascii_ids do id = u16(i)
     glyphs.ascent = 1
     glyphs.descent = -0.25
     glyphs.data['A'].advance = 0.5

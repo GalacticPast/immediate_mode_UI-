@@ -54,6 +54,7 @@ drawing_and_hit_testing_respect_row_clip :: proc(t: ^testing.T) {
     state = {}
     state.draw_commands = make([dynamic]Draw_Command)
     defer {
+        delete(state.hit_regions)
         delete(state.draw_commands)
         state = {}
     }

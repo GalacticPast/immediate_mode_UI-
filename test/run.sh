@@ -15,4 +15,5 @@ cp "$test_dir/platform/"*.odin "$test_workspace/src/platform/"
 cp "$test_dir/renderer/"*.odin "$test_workspace/src/renderer/"
 cp "$test_dir/text/"*.odin "$test_workspace/src/text/"
 
-odin test "$test_workspace/src" -all-packages -out:"$test_workspace/tests" -vet "$@"
+kb_collection=$(sh "$project_dir/scripts/kb-collection.sh" "$project_dir/bin/vendor")
+odin test "$test_workspace/src" "-collection:shaping=$kb_collection" "-define:IMUI_TEST_FONT=$project_dir/assets/font/Archivo-Regular.ttf" -all-packages -out:"$test_workspace/tests" -vet "$@"

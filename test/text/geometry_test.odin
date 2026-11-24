@@ -5,6 +5,7 @@ import "core:testing"
 @(test)
 quadratic_bezier_bounds_include_curve_extremum :: proc(t: ^testing.T) {
     glyphs: Glyphs
+    glyphs.data = make([]Glyph_Data, 128)
     glyphs.curves = make([dynamic]Curve)
     defer delete_glyphs(&glyphs)
 

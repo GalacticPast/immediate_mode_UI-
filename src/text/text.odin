@@ -5,6 +5,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:mem"
 import "core:os"
+import kb "shaping:kb_text_shape"
 import stbtt "vendor:stb/truetype"
 
 Curve :: struct {
@@ -19,7 +20,7 @@ AABB2 :: struct {
 }
 
 NUMBER_OF_BANDS :: 8
-// @note: glyph table is indexed directly by ASCII code. Control codes (0-31, 127) stay empty on purpose
+// Legacy labels use the ASCII lookup table. Shaped text addresses outlines by glyph ID.
 TEXT_GLYPH_COUNT :: 128
 // @note: a tab advances to the next multiple of this many spaces
 TEXT_TAB_WIDTH :: 4
@@ -45,7 +46,10 @@ Glyphs :: struct {
     vertical_bands:       [dynamic]i32,
     horizontal_bands_loc: [dynamic][2]i32,
     vertical_bands_loc:   [dynamic][2]i32,
-    data:                 [TEXT_GLYPH_COUNT]Glyph_Data, // @note: all of ascii
+    data:                 []Glyph_Data, // Indexed by OpenType glyph ID
+    ascii_ids:            [TEXT_GLYPH_COUNT]u16,
+    shaper:               ^kb.shape_context,
+    font_bytes:           []u8,
     font_name:            string,
 }
 
@@ -64,13 +68,16 @@ init :: proc(allocator := context.allocator) {
 }
 
 deinit :: proc() {
-    delete_glyphs(&t_state.glyphs)
+    delete_glyphs(&t_state.glyphs, t_state.allocator)
     free(t_state, t_state.allocator)
     t_state = nil
 }
 
 @(private)
-delete_glyphs :: proc(g: ^Glyphs) {
+delete_glyphs :: proc(g: ^Glyphs, allocator := context.allocator) {
+    if g.shaper != nil do kb.DestroyShapeContext(g.shaper)
+    if g.font_bytes != nil do delete(g.font_bytes, allocator)
+    if g.data != nil do delete(g.data, allocator)
     delete(g.curves)
     delete(g.horizontal_bands)
     delete(g.vertical_bands)
@@ -84,14 +91,18 @@ load_font :: proc(file_path: string) -> ^Glyphs {
 
     font_content, err := os.read_entire_file(file_path, allocator)
     fmt.assertf(err == nil && len(font_content) > 0, "couldnt read the font: %v", err)
-    // @note: only stbtt reads it, and only inside this proc
-    defer delete(font_content, allocator)
 
     font_info: stbtt.fontinfo
     res := stbtt.InitFont(&font_info, raw_data(font_content), 0)
     assert(bool(res), "font loading failed")
 
     g: Glyphs
+    g.font_bytes = font_content
+    g.shaper = kb.CreateShapeContext(kb.AllocatorFromOdinAllocator(&t_state.allocator))
+    assert(g.shaper != nil)
+    shaped_font := kb.ShapePushFontFromMemory(g.shaper, font_content, 0)
+    assert(shaped_font != nil, "kb could not read the font")
+    g.data = make([]Glyph_Data, font_info.numGlyphs, allocator)
     g.curves = make([dynamic]Curve, allocator)
     g.horizontal_bands = make([dynamic]i32, allocator)
     g.vertical_bands = make([dynamic]i32, allocator)
@@ -105,13 +116,12 @@ load_font :: proc(file_path: string) -> ^Glyphs {
     g.descent = f32(descent) * g.funit_to_em
     g.line_gap = f32(line_gap) * g.funit_to_em
 
-    for i in 0 ..< TEXT_GLYPH_COUNT {
-        // @note: control codes map to .notdef (a box) in most fonts; leave them empty instead
-        if i < ' ' || i == 127 do continue
+    for code in ' ' ..< 127 {
+        g.ascii_ids[code] = u16(stbtt.FindGlyphIndex(&font_info, code))
+    }
 
-        glyph_index := stbtt.FindGlyphIndex(&font_info, rune(i))
-        g_data := &g.data[i]
-
+    for &g_data, index in g.data {
+        glyph_index := i32(index)
         // @note: the advance is needed even when there is no outline (space)
         advance_funits, left_side_bearing: i32
         stbtt.GetGlyphHMetrics(&font_info, glyph_index, &advance_funits, &left_side_bearing)
@@ -156,7 +166,7 @@ load_font :: proc(file_path: string) -> ^Glyphs {
     // @warn:
     // @note: if there is a previous font that was loaded.
     // @note: But this would destroy the old one so
-    delete_glyphs(&t_state.glyphs)
+    delete_glyphs(&t_state.glyphs, t_state.allocator)
     t_state.glyphs = g
 
     return &t_state.glyphs

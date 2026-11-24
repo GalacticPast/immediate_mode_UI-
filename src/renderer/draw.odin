@@ -61,11 +61,11 @@ text_baseline_offset :: proc(font_size: f32) -> f32 {
 get_glyph :: proc(c: u8) -> ^text.Glyph_Data {
     code := c
     if code >= text.TEXT_GLYPH_COUNT do code = '?'
-    return &d_state.glyphs.data[code]
+    return &d_state.glyphs.data[d_state.glyphs.ascii_ids[code]]
 }
 
 next_tab_stop :: proc(pen_x: f32, font_size: f32) -> f32 {
-    tab := text.TEXT_TAB_WIDTH * d_state.glyphs.data[' '].advance * font_size
+    tab := text.TEXT_TAB_WIDTH * get_glyph(' ').advance * font_size
     return (math.floor(pen_x / tab) + 1.0) * tab
 }
 
@@ -131,31 +131,48 @@ push_text :: proc(str: string, position: [2]f32, color: [3]f32, font_size: f32, 
             pen_pos.y += line_height() * font_px
         }
 
-        // @perf: cache it:
-        // @note: all of this could be calculated at the font loading, and every frame we would only need to update the pen_offset
-        instance := Draw_Instance {
-            // @note: pen goes to em here, so only the pen is scaled. The matrix is already in em
-            pen_offset         = pen_pos / font_px,
-            curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
-            color_and_font_px  = {color.r, color.g, color.b, font_px},
-            translation_matrix = g.translation_matrix,
-            clip_rect          = {
-                clip.pos.x * d_s,
-                clip.pos.y * d_s,
-                clip.dimensions.x * d_s,
-                clip.dimensions.y * d_s,
-            },
-            bands_location     = [4]f32 {
-                cast(f32)g.h_band_loc_range.x,
-                cast(f32)g.h_band_loc_range.y,
-                cast(f32)g.v_band_loc_range.x,
-                cast(f32)g.v_band_loc_range.y,
-            },
-        }
-
-        append(&d_state.gpu_buffer, instance)
+        push_glyph(g, pen_pos, color, font_px, clip, d_s)
         pen_pos.x += g.advance * font_px
     }
+}
+
+push_shaped_line :: proc(line: text.Shaped_Line, position: [2]f32, color: [3]f32, font_size: f32, clip: Rect) {
+    scale := pl.get_display_scale()
+    baseline := position + [2]f32{0, text_baseline_offset(font_size)}
+    for glyph in line.glyphs {
+        g := &d_state.glyphs.data[glyph.id]
+        pen := baseline + glyph.offset * font_size
+        // Skip offscreen outlines so a long field only uploads visible glyphs.
+        left := pen.x + (g.aabb.center.x - g.aabb.half_size.x) * font_size
+        right := pen.x + (g.aabb.center.x + g.aabb.half_size.x) * font_size
+        if right <= clip.pos.x || left >= clip.pos.x + clip.dimensions.x do continue
+        push_glyph(g, pen * scale, color, font_size * scale, clip, scale)
+    }
+}
+
+@(private)
+push_glyph :: proc(g: ^text.Glyph_Data, pen_pos: [2]f32, color: [3]f32, font_px: f32, clip: Rect, d_s: f32) {
+    instance := Draw_Instance {
+        // @note: pen goes to em here, so only the pen is scaled. The matrix is already in em
+        pen_offset         = pen_pos / font_px,
+        curve_indices      = {f32(g.curves_indicies.x), f32(g.curves_indicies.y)},
+        color_and_font_px  = {color.r, color.g, color.b, font_px},
+        translation_matrix = g.translation_matrix,
+        clip_rect          = {
+            clip.pos.x * d_s,
+            clip.pos.y * d_s,
+            clip.dimensions.x * d_s,
+            clip.dimensions.y * d_s,
+        },
+        bands_location     = [4]f32 {
+            cast(f32)g.h_band_loc_range.x,
+            cast(f32)g.h_band_loc_range.y,
+            cast(f32)g.v_band_loc_range.x,
+            cast(f32)g.v_band_loc_range.y,
+        },
+    }
+
+    append(&d_state.gpu_buffer, instance)
 }
 
 push_rect :: proc(r: Rect, color: [3]f32, clip: Rect) {

@@ -25,6 +25,10 @@ Platform_Linux_State :: struct {
     xkb_state:                   ^wl.xkb_state,
     xkb_keymap:                  ^wl.xkb_keymap,
     keyboard:                    ^wl.keyboard,
+    repeat_keycode:              u32,
+    repeat_rate:                 i32,
+    repeat_delay:                i32,
+    repeat_at:                   time.Tick,
     pointer:                     ^wl.pointer,
     pointer_serial:              u32,
     wp_viewporter:               ^wl.wp_viewporter,
@@ -58,6 +62,7 @@ p_l_state: Platform_Linux_State
 
 k_listener: wl.keyboard_listener = {
     keymap = proc "c" (data: rawptr, keyboard: ^wl.keyboard, format: u32, fd: i32, size: u32) {
+        p_l_state.repeat_at = {}
         defer (linux.close(cast(linux.Fd)fd))
         map_shm, err := linux.mmap(0, (uint)(size), {.READ}, {.PRIVATE}, cast(linux.Fd)fd, 0)
         if err != .NONE {
@@ -71,6 +76,7 @@ k_listener: wl.keyboard_listener = {
             wl.XKB_KEYMAP_FORMAT_TEXT_V1,
             wl.XKB_KEYMAP_COMPILE_NO_FLAGS,
         )
+        if keymap == nil do return
         x_state := wl.xkb_state_new(keymap)
         wl.xkb_keymap_unref(p_l_state.xkb_keymap)
         wl.xkb_state_unref(p_l_state.xkb_state)
@@ -79,35 +85,60 @@ k_listener: wl.keyboard_listener = {
         p_l_state.xkb_state = x_state
     },
     enter = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface, keys: ^wl.array) {  },
-    leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {  },
-    key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, time, key, state: u32) {
-        // @note: I have no idea why I need to add 8 but the docs say so I guess
-        // @note: https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_keyboard
-        ctx := p_state.t_context
-        if ctx == nil do return
-        // @note: set the context
-        context = ctx^
-
+    leave = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial: u32, surface: ^wl.surface) {
+        p_l_state.repeat_at = {}
+        if p_state.t_context == nil do return
+        context = p_state.t_context^
+        event := new(Event)
+        event.type = .KEYBOARD_LEAVE
+        push_event(event)
+    },
+    key = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, timestamp, key, state: u32) {
+        if p_state.t_context == nil || p_l_state.xkb_state == nil do return
+        context = p_state.t_context^
+        // The XKB keycode includes an offset of 8 from the Wayland evdev keycode.
         keycode := key + 8
-        sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
-        //@todo: incomplete
-        k_type := translate_key_code(sym)
-        e := new(Event) // @warn: pointer dangling
-        e.payload = k_type
-
         switch state {
             case 0:
-                e.type = .KEY_RELEASE
-            // @todo: idk how to do key repeats for now
-            case 1, 2:
-                e.type = .KEY_PRESS
-            case:
-                e.type = .NONE
+                if p_l_state.repeat_keycode == keycode do p_l_state.repeat_at = {}
+                push_keyboard_event(keycode, .KEY_RELEASE)
+            case 1:
+                push_keyboard_event(keycode, .KEY_PRESS)
+                if p_l_state.repeat_rate > 0 && wl.xkb_keymap_key_repeats(p_l_state.xkb_keymap, keycode) != 0 {
+                    p_l_state.repeat_keycode = keycode
+                    p_l_state.repeat_at = time.tick_add(time.tick_now(), time.Duration(p_l_state.repeat_delay) * time.Millisecond)
+                }
+            case 2:
+                // Newer compositors can send repeats themselves with a client repeat rate of zero.
+                push_keyboard_event(keycode, .KEY_REPEAT)
         }
-        push_event(e)
     },
-    modifiers = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, depressed, latched, locked, group: u32) {  },
-    repeat_info = proc "c" (data: rawptr, keyboard: ^wl.keyboard, rate, delay: i32) {  },
+    modifiers = proc "c" (data: rawptr, keyboard: ^wl.keyboard, serial, depressed, latched, locked, group: u32) {
+        if p_l_state.xkb_state != nil {
+            wl.xkb_state_update_mask(p_l_state.xkb_state, depressed, latched, locked, 0, 0, group)
+        }
+    },
+    repeat_info = proc "c" (data: rawptr, keyboard: ^wl.keyboard, rate, delay: i32) {
+        p_l_state.repeat_rate = rate
+        p_l_state.repeat_delay = delay
+        p_l_state.repeat_at = {}
+    },
+}
+
+@(private)
+push_keyboard_event :: proc(keycode: u32, kind: Event_Type) {
+    sym := wl.xkb_state_key_get_one_sym(p_l_state.xkb_state, keycode)
+    key := new(Event, context.temp_allocator)
+    key^ = {type = kind, payload = translate_key_code(sym)}
+    push_event(key)
+    if kind == .KEY_RELEASE do return
+
+    ch := rune(wl.xkb_state_key_get_utf32(p_l_state.xkb_state, keycode))
+    if printable_input(ch) {
+        input := new(Event, context.temp_allocator)
+        input^ = {type = .TEXT_INPUT, payload = ch}
+        push_event(input)
+    }
 }
 
 // @note: Events up to version 10. Which ones arrive depends on the seat version we bind.
@@ -118,6 +149,11 @@ BTN_MIDDLE :: 0x112
 p_listener: wl.pointer_listener = {
     enter = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface, x, y: wl.fixed) {
         p_l_state.pointer_serial = serial
+        if p_state.t_context == nil do return
+        context = p_state.t_context^
+        e := new(Event)
+        e^ = {type = .MOUSE_MOVE, pos = {i32(wl.fixed_to_f32(x)), i32(wl.fixed_to_f32(y))}}
+        push_event(e)
     },
     leave = proc "c" (data: rawptr, pointer: ^wl.pointer, serial: u32, surface: ^wl.surface) {
         p_l_state.pointer_serial = 0 //@warn: idk if this is bad or not
@@ -142,7 +178,7 @@ p_listener: wl.pointer_listener = {
         context = ctx^
         e := new(Event) // @perf:
         e.type = .MOUSE_BTN_RELEASED if state == 0 else .MOUSE_BTN_PRESSED
-        e.key = cast(Key_Type)button
+        e.payload = cast(Key_Type)button
         push_event(e)
     },
     axis = proc "c" (data: rawptr, pointer: ^wl.pointer, time, axis: u32, value: wl.fixed) {  },
@@ -165,9 +201,13 @@ w_seat_listener: wl.seat_listener = {
         keyboard := capabilities & wl.SEAT_CAPABILITY_KEYBOARD
         mouse := capabilities & wl.SEAT_CAPABILITY_POINTER
 
-        if keyboard == wl.SEAT_CAPABILITY_KEYBOARD {
+        if keyboard == wl.SEAT_CAPABILITY_KEYBOARD && p_l_state.keyboard == nil {
             p_l_state.keyboard = wl.seat_get_keyboard(p_l_state.seat)
             wl.add_listener(p_l_state.keyboard, &k_listener, nil)
+        } else if keyboard == 0 && p_l_state.keyboard != nil {
+            p_l_state.repeat_at = {}
+            wl.keyboard_release(p_l_state.keyboard)
+            p_l_state.keyboard = nil
         }
         if mouse == wl.SEAT_CAPABILITY_POINTER {
             p_l_state.pointer = wl.seat_get_pointer(p_l_state.seat)
@@ -489,7 +529,13 @@ startup :: proc(width, height: i32) -> (ok: bool) {
 }
 
 dispatch :: proc() -> bool {
-    defer { p_l_state.deadline = {} }
+    defer {
+        p_l_state.deadline = {}
+        if p_l_state.repeat_at != {} && time.tick_since(p_l_state.repeat_at) >= 0 {
+            push_keyboard_event(p_l_state.repeat_keycode, .KEY_REPEAT)
+            p_l_state.repeat_at = time.tick_add(time.tick_now(), time.Second / time.Duration(p_l_state.repeat_rate))
+        }
+    }
     result: i32 = wl.display_prepare_read(p_l_state.display)
     if result == -1 {
         result = wl.display_dispatch_pending(p_l_state.display)
@@ -500,7 +546,11 @@ dispatch :: proc() -> bool {
     raw_fd: linux.Fd = cast(linux.Fd)wl.display_get_fd(p_l_state.display)
     fds := []linux.Poll_Fd{{fd = raw_fd, events = {.IN}}}
 
-    ready, err := linux.poll(fds, poll_timeout_ms(p_l_state.deadline))
+    deadline := p_l_state.deadline
+    if p_l_state.repeat_at != {} && (deadline == {} || time.tick_diff(p_l_state.repeat_at, deadline) > 0) {
+        deadline = p_l_state.repeat_at
+    }
+    ready, err := linux.poll(fds, poll_timeout_ms(deadline))
     if err != .NONE && err != .EINTR {
         fmt.eprintln("Linux poll failed ", err)
         wl.display_cancel_read(p_l_state.display)
@@ -577,6 +627,11 @@ translate_cursor_code :: proc(type: Pointer_Type) -> u32 {
 
 translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
     switch (xkb_key) {
+        case wl.XKB_KEY_BackSpace: return .BACKSPACE
+        case wl.XKB_KEY_Delete, wl.XKB_KEY_KP_Delete: return .DELETE
+        case wl.XKB_KEY_Home, wl.XKB_KEY_KP_Home: return .HOME
+        case wl.XKB_KEY_End, wl.XKB_KEY_KP_End: return .END
+        case wl.XKB_KEY_Return, wl.XKB_KEY_KP_Enter: return .ENTER
         case wl.XKB_KEY_Escape:
             return .ESCAPE
         case wl.XKB_KEY_a:
@@ -631,11 +686,11 @@ translate_key_code :: proc "contextless" (xkb_key: u32) -> Key_Type {
             return .Y
         case wl.XKB_KEY_z:
             return .Z
-        case wl.XKB_KEY_Left:
+        case wl.XKB_KEY_Left, wl.XKB_KEY_KP_Left:
             return .LEFT
         case wl.XKB_KEY_Up:
             return .UP
-        case wl.XKB_KEY_Right:
+        case wl.XKB_KEY_Right, wl.XKB_KEY_KP_Right:
             return .RIGHT
         case wl.XKB_KEY_Down:
             return .DOWN

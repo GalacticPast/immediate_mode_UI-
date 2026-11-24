@@ -2,6 +2,7 @@ package ui
 
 import pl "../platform"
 import r "../renderer"
+import "../text"
 import "base:runtime"
 import "core:hash"
 import "core:mem"
@@ -24,6 +25,7 @@ WIDGET_FLAG :: enum {
     RESIZABLE,
     GRABBABLE,
     TEXT,
+    TEXT_EDIT,
 
     // @note: types
     CLIP,
@@ -66,6 +68,8 @@ Box :: struct {
     // @note: this should persist between draws
     key:                             u64,
     build_index:                     u64, // @note: up to which version did we build it
+    cursor_byte:                     int,
+    edit_scroll:                     f32,
     view_bounds:                     [2]f32,
     view_offset:                     [2]f32,
 
@@ -110,6 +114,7 @@ Draw_Type :: enum {
     NONE,
     RECTANGLE,
     TEXT,
+    SHAPED_LINE,
 }
 
 Rect :: struct {
@@ -121,6 +126,8 @@ Draw_Command :: struct {
     clip:  Rect,
     color: [3]f32,
     title: string,
+    line:  text.Shaped_Line,
+    font_size: f32,
     type:  Draw_Type,
 }
 
@@ -148,6 +155,9 @@ State :: struct {
     mouse_dx:             [2]i32,
 
     // @note: transient
+    focus_key:            u64,
+    hit_regions:          [dynamic]Edit_Hit_Region,
+    edit_events:          [dynamic]Edit_Event,
     active_widget_key:    u64,
     hot_widget_key:       u64,
     inside_floating:      bool,        // @todo: @temp:
@@ -165,6 +175,8 @@ init :: proc() {
     state.frame_allocator = context.temp_allocator
     state.draw_commands = make([dynamic]Draw_Command, state.allocator)
     state.curr_parent = make([dynamic]^Box, state.allocator)
+    state.hit_regions = make([dynamic]Edit_Hit_Region, state.allocator)
+    state.edit_events = make([dynamic]Edit_Event, state.allocator)
     state.tree = make(map[u64]^Box, state.allocator)
     state.def_color = {0.216, 0.247, 0.290}
     state.curr_build_index = 0
@@ -175,6 +187,8 @@ init :: proc() {
 deinit :: proc() {
     delete(state.draw_commands)
     delete(state.curr_parent)
+    delete(state.hit_regions)
+    delete(state.edit_events)
     delete(state.tree)
     mem.dynamic_arena_destroy(&state.arena)
 }
@@ -187,6 +201,7 @@ build :: proc(events: pl.Event_List) -> bool {
     clear(&state.draw_commands) // @note: clear it
     clear(&state.curr_parent)
 
+    clear(&state.edit_events)
     state.events = events
 
     eat: ^pl.Event
@@ -204,6 +219,13 @@ build :: proc(events: pl.Event_List) -> bool {
             case .MOUSE_BTN_PRESSED:
                 state.mouse_btn_press = e.payload.(pl.Key_Type)
                 state.mouse_btn_held = e.payload.(pl.Key_Type)
+                if state.mouse_btn_press == .BTN_LEFT {
+                    state.focus_key = editor_at(state.mouse_pos)
+                    if state.focus_key != 0 {
+                        append(&state.edit_events, {state.focus_key, e, state.mouse_pos.x})
+                        state.mouse_btn_press = .NONE
+                    }
+                }
                 eat = e
             case .MOUSE_BTN_RELEASED:
                 if state.mouse_btn_press == e.payload.(pl.Key_Type) {
@@ -213,16 +235,22 @@ build :: proc(events: pl.Event_List) -> bool {
                     state.mouse_btn_press = .NONE
                 }
                 eat = e
-            case .KEY_PRESS:
-                {
+            case .KEYBOARD_LEAVE:
+                state.focus_key = 0
+            case .TEXT_INPUT, .KEY_PRESS, .KEY_REPEAT:
+                if state.focus_key != 0 {
+                    append(&state.edit_events, {state.focus_key, e, 0})
+                    if e.type != .TEXT_INPUT && e.payload.(pl.Key_Type) == .ENTER do state.focus_key = 0
+                    eat = e
+                } else if e.type == .KEY_PRESS {
                     if e.payload.(pl.Key_Type) == .D {
                         state.debug = !state.debug
                         eat = e
                     }
-                    if e.key == .I {
+                    if e.payload.(pl.Key_Type) == .I {
                         state.font_size += 1
                     }
-                    if e.key == .U {
+                    if e.payload.(pl.Key_Type) == .U {
                         state.font_size -= 1
                         state.font_size = max(6, state.font_size)
                     }
@@ -261,6 +289,11 @@ build :: proc(events: pl.Event_List) -> bool {
 }
 
 build_end :: proc(_: bool) {
+    if state.focus_key != 0 {
+        field := state.tree[state.focus_key]
+        if field.build_index != state.curr_build_index || .TEXT_EDIT not_in field.flags do state.focus_key = 0
+    }
+    if editor_at(state.mouse_pos) != 0 do pl.set_cursor_icon(.TEXT)
     state.hot_widget_key = 0
     state.mouse_btn_press = .NONE
     state.prev_frame_mouse_pos = state.mouse_pos
@@ -276,6 +309,7 @@ build_draw_commands :: proc() -> []Draw_Command {
     // @note: important so that we only work on the first child index
     calc_positions(root.first)
     // @note: welp
+    clear(&state.hit_regions)
     pre_order_traversal(root, {root.pos, root.dimensions})
     return state.draw_commands[:]
 }
@@ -512,7 +546,15 @@ calc_size_independent :: proc(node: ^Box) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         calc_size_independent(elem.first)
-        text_size := r.calculate_text_size(elem.title, state.font_size)
+        text_size: [2]f32
+        if elem.h_size.type == .BASED_ON_TEXT || elem.v_size.type == .BASED_ON_TEXT {
+            if .TEXT_EDIT in elem.flags {
+                line := (^text.Shaped_Line)(elem.custom_data)
+                text_size = {line.width * state.font_size + EDIT_PADDING, line.height * state.font_size + EDIT_PADDING}
+            } else {
+                text_size = r.calculate_text_size(elem.title, state.font_size)
+            }
+        }
         #partial switch (elem.h_size.type) {
             case .BASED_ON_TEXT:
                 elem.dimensions.x = text_size[0] + 5 // @note: 2.5 units in each dir
@@ -780,6 +822,10 @@ pre_order_traversal :: proc(node: ^Box, inherited_clip: Rect) {
     if node == nil do return
     for elem := node; elem != nil; elem = elem.next {
         clip := intersect_rect(inherited_clip, {elem.pos, elem.dimensions})
+        if .DRAW_RECT in elem.flags || .PRESSABLE in elem.flags || .DRAW_CUSTOM in elem.flags || .TEXT_EDIT in elem.flags {
+            target := elem.key if .TEXT_EDIT in elem.flags else u64(0)
+            append(&state.hit_regions, {clip, target})
+        }
         color := elem.color
         if .DRAW_BORDER in elem.flags || state.debug == true {
             append(
@@ -815,6 +861,7 @@ pre_order_traversal :: proc(node: ^Box, inherited_clip: Rect) {
                 state.draw_commands[i].clip = clip
             }
         }
-        pre_order_traversal(elem.first, clip)
+        child_clip := clip if .CLIP in elem.flags else inherited_clip
+        pre_order_traversal(elem.first, child_clip)
     }
 }

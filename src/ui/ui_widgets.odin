@@ -122,7 +122,7 @@ scroll_region :: proc(label: string, description := Box_Desc{}) -> bool {
             box_h_size,
             box_v_size,
             box_pos,
-            box_flags,
+            box_flags + {.CLIP},
             text_align,
             box_children_layout_axis,
             box_color,

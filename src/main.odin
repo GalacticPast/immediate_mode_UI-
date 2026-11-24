@@ -99,6 +99,8 @@ main :: proc() {
 
     fmt.println("box struct size: ", size_of(ui.Box))
 
+    input := make([dynamic]u8)
+    defer delete(input)
     res := false
     run := true
 
@@ -112,7 +114,7 @@ main :: proc() {
                     run = false
                     eat = e
                 case .KEY_RELEASE:
-                    if e.key == .ESCAPE {
+                    if e.payload.(pl.Key_Type) == .ESCAPE {
                         run = false
                         eat = e
                     }
@@ -130,6 +132,8 @@ main :: proc() {
                 v_size = {type = .BASED_ON_PARENT_PCT, value = 1},
             }
             if ui.panel("panel", description) {
+                ui.label("Text input")
+                ui.text_edit("demo-input", &input)
                 if ui.scroll_region(
                     "view",
                     {
@@ -173,6 +177,8 @@ main :: proc() {
                     r.push({cmd.rect.pos, cmd.rect.dimen}, cmd.color, {cmd.clip.pos, cmd.clip.dimen})
                 case .TEXT:
                     r.push(cmd.title, cmd.rect.pos, cmd.color, 12, 0, {cmd.clip.pos, cmd.clip.dimen})
+                case .SHAPED_LINE:
+                    r.push_shaped_line(cmd.line, cmd.rect.pos, cmd.color, cmd.font_size, {cmd.clip.pos, cmd.clip.dimen})
                 case .NONE:
             }
         }
